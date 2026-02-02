@@ -832,6 +832,10 @@ export function Prompt(props: PromptProps) {
                   // If no image, let the default paste behavior continue
                 }
                 if (keybind.match("input_clear", e) && store.prompt.input !== "") {
+                  history.append({
+                    ...store.prompt,
+                    mode: store.mode,
+                  })
                   input.clear()
                   input.extmarks.clear()
                   setStore("prompt", {
