@@ -127,14 +127,36 @@ export function Session() {
       .toSorted((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
   })
   const messages = createMemo(() => sync.data.message[route.sessionID] ?? [])
+  const localPermissions = createMemo(() => sync.data.permission[route.sessionID] ?? [])
+  const localQuestions = createMemo(() => sync.data.question[route.sessionID] ?? [])
+  const childSessions = createMemo(() => {
+    if (session()?.parentID) return []
+    return children().filter((x) => x.id !== route.sessionID)
+  })
   const permissions = createMemo(() => {
     if (session()?.parentID) return []
-    return children().flatMap((x) => sync.data.permission[x.id] ?? [])
+    const child = childSessions().flatMap((x) => sync.data.permission[x.id] ?? [])
+    return [...localPermissions(), ...child]
   })
   const questions = createMemo(() => {
     if (session()?.parentID) return []
-    return children().flatMap((x) => sync.data.question[x.id] ?? [])
+    const child = childSessions().flatMap((x) => sync.data.question[x.id] ?? [])
+    return [...localQuestions(), ...child]
   })
+  const activeSubagents = createMemo(() =>
+    childSessions().flatMap((item) => {
+      const status = sync.data.session_status?.[item.id]
+      if (status?.type === "busy" || status?.type === "retry") {
+        return [
+          {
+            session: item,
+            status,
+          },
+        ]
+      }
+      return []
+    }),
+  )
 
   const pending = createMemo(() => {
     return messages().findLast((x) => x.role === "assistant" && !x.time.completed)?.id
@@ -1115,6 +1137,29 @@ export function Session() {
               </For>
             </scrollbox>
             <box flexShrink={0}>
+              <Show when={activeSubagents().length > 0}>
+                <box paddingLeft={3} paddingBottom={1} gap={0}>
+                  <text fg={theme.text}>
+                    <span style={{ fg: theme.textMuted }}>Subagents</span> {activeSubagents().length} running
+                    <span style={{ fg: theme.textMuted }}> · {keybind.print("session_child_cycle")} open</span>
+                  </text>
+                  <For each={activeSubagents().slice(0, 3)}>
+                    {(item) => (
+                      <text
+                        fg={theme.textMuted}
+                        onMouseUp={() => {
+                          navigate({
+                            type: "session",
+                            sessionID: item.session.id,
+                          })
+                        }}
+                      >
+                        ↳ {Locale.truncate(item.session.title, 42)}
+                      </text>
+                    )}
+                  </For>
+                </box>
+              </Show>
               <Show when={permissions().length > 0}>
                 <PermissionPrompt request={permissions()[0]} />
               </Show>
@@ -1122,7 +1167,7 @@ export function Session() {
                 <QuestionPrompt request={questions()[0]} />
               </Show>
               <Prompt
-                visible={!session()?.parentID && permissions().length === 0 && questions().length === 0}
+                visible={!session()?.parentID && localPermissions().length === 0 && localQuestions().length === 0}
                 ref={(r) => {
                   prompt = r
                   promptRef.set(r)
@@ -1131,7 +1176,7 @@ export function Session() {
                     r.set(route.initialPrompt)
                   }
                 }}
-                disabled={permissions().length > 0 || questions().length > 0}
+                disabled={localPermissions().length > 0 || localQuestions().length > 0}
                 onSubmit={() => {
                   toBottom()
                 }}
@@ -1886,22 +1931,47 @@ function Task(props: ToolProps<typeof TaskTool>) {
   const { theme } = useTheme()
   const keybind = useKeybind()
   const { navigate } = useRoute()
-  const local = useLocal()
   const sync = useSync()
 
-  const tools = createMemo(() => {
+  const msgs = createMemo(() => {
     const sessionID = props.metadata.sessionId
-    const msgs = sync.data.message[sessionID ?? ""] ?? []
-    return msgs.flatMap((msg) =>
+    return sync.data.message[sessionID ?? ""] ?? []
+  })
+  const tools = createMemo(() =>
+    msgs().flatMap((msg) =>
       (sync.data.part[msg.id] ?? [])
         .filter((part): part is ToolPart => part.type === "tool")
         .map((part) => ({ tool: part.tool, state: part.state })),
-    )
-  })
+    ),
+  )
 
   const current = createMemo(() => tools().findLast((x) => x.state.status !== "pending"))
-
-  const isRunning = createMemo(() => props.part.state.status === "running")
+  const background = createMemo(() => props.metadata.background === true)
+  const status = createMemo(() => {
+    const sessionID = props.metadata.sessionId
+    if (!sessionID) return
+    return sync.data.session_status?.[sessionID]
+  })
+  const counts = createMemo(() => {
+    const all = tools()
+    const done = all.filter((item) => item.state.status === "completed" || item.state.status === "error").length
+    return {
+      all: all.length,
+      done,
+    }
+  })
+  const childRunning = createMemo(() => status()?.type === "busy" || status()?.type === "retry")
+  const backgroundRunning = createMemo(() => background() && childRunning())
+  const failed = createMemo(() => {
+    if (!background() || childRunning()) return false
+    return !!msgs().findLast((msg) => msg.role === "assistant")?.error
+  })
+  const isRunning = createMemo(() => props.part.state.status === "running" || childRunning())
+  const toolLabel = createMemo(() => {
+    const total = counts().all
+    if (!childRunning()) return `${total} toolcalls`
+    return `${counts().done}/${total} toolcalls`
+  })
 
   return (
     <Switch>
@@ -1918,8 +1988,21 @@ function Task(props: ToolProps<typeof TaskTool>) {
         >
           <box>
             <text style={{ fg: theme.textMuted }}>
-              {props.input.description} ({tools().length} toolcalls)
+              {props.input.description} ({toolLabel()})
+              <Show when={background()}>
+                <span> · background</span>
+              </Show>
             </text>
+            <Show when={background()}>
+              <text style={{ fg: failed() ? theme.error : backgroundRunning() ? theme.warning : theme.textMuted }}>
+                ↳{" "}
+                {backgroundRunning()
+                  ? "running in background"
+                  : failed()
+                    ? "background task failed"
+                    : "background task finished"}
+              </text>
+            </Show>
             <Show when={current()}>
               {(item) => {
                 const title = item().state.status === "completed" ? (item().state as any).title : ""
