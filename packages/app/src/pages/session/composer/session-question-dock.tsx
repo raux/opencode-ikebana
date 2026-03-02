@@ -233,25 +233,10 @@ export const SessionQuestionDock: Component<{ request: QuestionRequest; onSubmit
     setStore("editing", false)
   }
 
-  const click = (target: EventTarget | null) => {
-    if (store.sending) return
-    if (!(target instanceof Node)) {
-      fold()
-      return
-    }
-
-    const list = root?.querySelector('[data-slot="question-options"]')
-    if (list instanceof HTMLElement && list.contains(target)) return
-    fold()
-  }
-
   return (
     <DockPrompt
       kind="question"
       ref={(el) => (root = el)}
-      bodyProps={{
-        onClick: (event) => click(event.target),
-      }}
       header={
         <div
           data-action="session-question-toggle"
@@ -259,10 +244,7 @@ export const SessionQuestionDock: Component<{ request: QuestionRequest; onSubmit
           role="button"
           tabIndex={0}
           style={{ margin: "0 -10px", padding: "0 0 0 10px" }}
-          onClick={(event) => {
-            event.stopPropagation()
-            fold()
-          }}
+          onClick={fold}
           onKeyDown={(event) => {
             if (event.key !== "Enter" && event.key !== " ") return
             event.preventDefault()
@@ -314,14 +296,13 @@ export const SessionQuestionDock: Component<{ request: QuestionRequest; onSubmit
         classList={{
           "mb-6": store.collapsed && picked() === 0,
         }}
-        onClick={(event) => {
-          event.stopPropagation()
-          fold()
-        }}
+        role={store.collapsed ? "button" : undefined}
+        tabIndex={store.collapsed ? 0 : undefined}
+        onClick={fold}
         onKeyDown={(event) => {
+          if (!store.collapsed) return
           if (event.key !== "Enter" && event.key !== " ") return
           event.preventDefault()
-          event.stopPropagation()
           fold()
         }}
       >

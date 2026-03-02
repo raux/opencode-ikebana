@@ -1,4 +1,4 @@
-import type { ComponentProps, JSX } from "solid-js"
+import type { JSX } from "solid-js"
 import { DockShell, DockTray } from "./dock-surface"
 
 export function DockPrompt(props: {
@@ -7,13 +7,12 @@ export function DockPrompt(props: {
   children: JSX.Element
   footer: JSX.Element
   ref?: (el: HTMLDivElement) => void
-  bodyProps?: Omit<ComponentProps<"div">, "children">
 }) {
   const slot = (name: string) => `${props.kind}-${name}`
 
   return (
     <div data-component="dock-prompt" data-kind={props.kind} ref={props.ref}>
-      <DockShell {...(props.bodyProps ?? {})} data-slot={slot("body")}>
+      <DockShell data-slot={slot("body")}>
         <div data-slot={slot("header")}>{props.header}</div>
         <div data-slot={slot("content")}>{props.children}</div>
       </DockShell>
