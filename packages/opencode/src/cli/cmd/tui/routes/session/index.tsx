@@ -1879,9 +1879,7 @@ function Read(props: ToolProps<typeof ReadTool>) {
       <For each={loaded()}>
         {(filepath) => (
           <box paddingLeft={3}>
-            <text paddingLeft={3} fg={theme.textMuted}>
-              ↳ Loaded {normalizePath(filepath)}
-            </text>
+            <text fg={theme.textMuted}>↳ Loaded {normalizePath(filepath)}</text>
           </box>
         )}
       </For>
@@ -1987,19 +1985,19 @@ function Task(props: ToolProps<typeof TaskTool>) {
       <Show when={isRunning() && tools().length > 0}>
         {" "}
         · {tools().length} toolcalls
-        <Show fallback={"\n└ Running..."} when={current()}>
+        <Show fallback={"\n↳ Running..."} when={current()}>
           {(item) => {
             const title = createMemo(() => (item().state as any).title)
             return (
               <>
-                {"\n"}└ {Locale.titlecase(item().tool)} {title()}
+                {"\n"}↳ {Locale.titlecase(item().tool)} {title()}
               </>
             )
           }}
         </Show>
       </Show>
       <Show when={duration() && props.part.state.status === "completed"}>
-        {"\n  "}
+        {"\n↳ "}
         {tools().length} toolcalls · {Locale.duration(duration())}
       </Show>
     </InlineTool>
