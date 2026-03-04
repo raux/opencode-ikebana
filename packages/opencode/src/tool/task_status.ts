@@ -44,35 +44,58 @@ async function inspect(taskID: string) {
     }
   }
 
+  let latestUser: MessageV2.User | undefined
+  let latestAssistant:
+    | {
+        info: MessageV2.Assistant
+        parts: MessageV2.Part[]
+      }
+    | undefined
   for await (const item of MessageV2.stream(taskID)) {
-    if (item.info.role !== "assistant") continue
-
-    const text = item.parts.findLast((part) => part.type === "text")?.text ?? ""
-    if (item.info.error) {
-      const summary = errorText(item.info.error)
-      return {
-        state: "error" as const,
-        text: text || summary,
+    if (!latestUser && item.info.role === "user") latestUser = item.info
+    if (!latestAssistant && item.info.role === "assistant") {
+      latestAssistant = {
+        info: item.info,
+        parts: item.parts,
       }
     }
+    if (latestUser && latestAssistant) break
+  }
 
-    const done = item.info.finish && !["tool-calls", "unknown"].includes(item.info.finish)
-    if (done) {
-      return {
-        state: "completed" as const,
-        text,
-      }
-    }
-
+  if (!latestAssistant) {
     return {
       state: "running" as const,
-      text: text || "Task is still running.",
+      text: "Task has started but has not produced output yet.",
+    }
+  }
+
+  if (latestUser && latestUser.id > latestAssistant.info.id) {
+    return {
+      state: "running" as const,
+      text: "Task is starting.",
+    }
+  }
+
+  const text = latestAssistant.parts.findLast((part) => part.type === "text")?.text ?? ""
+  if (latestAssistant.info.error) {
+    const summary = errorText(latestAssistant.info.error)
+    return {
+      state: "error" as const,
+      text: text || summary,
+    }
+  }
+
+  const done = latestAssistant.info.finish && !["tool-calls", "unknown"].includes(latestAssistant.info.finish)
+  if (done) {
+    return {
+      state: "completed" as const,
+      text,
     }
   }
 
   return {
     state: "running" as const,
-    text: "Task has started but has not produced output yet.",
+    text: text || "Task is still running.",
   }
 }
 
