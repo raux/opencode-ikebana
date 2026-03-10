@@ -1,4 +1,5 @@
 import semver from "semver"
+import { text } from "node:stream/consumers"
 import { Log } from "../util/log"
 import { Process } from "../util/process"
 
@@ -27,18 +28,5 @@ export namespace PackageRegistry {
     const value = stdout.toString().trim()
     if (!value) return null
     return value
-  }
-
-  export async function isOutdated(pkg: string, cachedVersion: string, cwd?: string): Promise<boolean> {
-    const latestVersion = await info(pkg, "version", cwd)
-    if (!latestVersion) {
-      log.warn("Failed to resolve latest version, using cached", { pkg, cachedVersion })
-      return false
-    }
-
-    const isRange = /[\s^~*xX<>|=]/.test(cachedVersion)
-    if (isRange) return !semver.satisfies(latestVersion, cachedVersion)
-
-    return semver.lt(cachedVersion, latestVersion)
   }
 }
