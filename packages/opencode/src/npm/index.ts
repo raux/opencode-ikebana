@@ -17,6 +17,9 @@ import { Lock } from "../util/lock"
 import { Log } from "../util/log"
 import path from "path"
 import { readdir } from "fs/promises"
+import { Filesystem } from "@/util/filesystem"
+
+const { Arborist } = await import("@npmcli/arborist")
 
 export namespace Npm {
   const log = Log.create({ service: "npm" })
@@ -54,13 +57,12 @@ export namespace Npm {
 
   export async function add(pkg: string) {
     using _ = await Lock.write("npm-install")
-    log.info("installing package using npm arborist", {
+    log.info("installing package", {
       pkg,
     })
     const hash = pkg
     const dir = directory(hash)
 
-    const { Arborist } = await import("@npmcli/arborist")
     const arborist = new Arborist({
       path: dir,
       binLinks: true,
@@ -70,7 +72,10 @@ export namespace Npm {
     const tree = await arborist.loadVirtual().catch(() => {})
     if (tree) {
       const first = tree.edgesOut.values().next().value?.to
-      if (first) return first.path
+      if (first) {
+        log.info("package already installed", { pkg })
+        return first.path
+      }
     }
 
     const result = await arborist
@@ -94,15 +99,51 @@ export namespace Npm {
   }
 
   export async function install(dir: string) {
-    log.info("installing dependencies", { dir })
-    const { Arborist } = await import("@npmcli/arborist")
-    const arb = new Arborist({
-      path: dir,
-      binLinks: true,
-      progress: false,
-      savePrefix: "",
-    })
-    await arb.reify()
+    log.info("checking dependencies", { dir })
+
+    const reify = async () => {
+      const arb = new Arborist({
+        path: dir,
+        binLinks: true,
+        progress: false,
+        savePrefix: "",
+      })
+      await arb.reify().catch(() => {})
+    }
+
+    if (!(await Filesystem.exists(path.join(dir, "node_modules")))) {
+      log.info("node_modules missing, reifying")
+      await reify()
+      return
+    }
+
+    const pkg = await Filesystem.readJson(path.join(dir, "package.json")).catch(() => ({}))
+    const lock = await Filesystem.readJson(path.join(dir, "package-lock.json")).catch(() => ({}))
+
+    const declared = new Set([
+      ...Object.keys(pkg.dependencies || {}),
+      ...Object.keys(pkg.devDependencies || {}),
+      ...Object.keys(pkg.peerDependencies || {}),
+      ...Object.keys(pkg.optionalDependencies || {}),
+    ])
+
+    const root = lock.packages?.[""] || {}
+    const locked = new Set([
+      ...Object.keys(root.dependencies || {}),
+      ...Object.keys(root.devDependencies || {}),
+      ...Object.keys(root.peerDependencies || {}),
+      ...Object.keys(root.optionalDependencies || {}),
+    ])
+
+    for (const name of declared) {
+      if (!locked.has(name)) {
+        log.info("dependency not in lock file, reifying", { name })
+        await reify()
+        return
+      }
+    }
+
+    log.info("dependencies in sync")
   }
 
   export async function which(pkg: string) {
