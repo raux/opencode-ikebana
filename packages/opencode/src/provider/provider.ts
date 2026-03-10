@@ -117,6 +117,14 @@ export namespace Provider {
     options?: Record<string, any>
   }>
 
+  const byShape = (sdk: any, model: Model) => {
+    const shape = model.api.shape
+    if (sdk.responses === undefined && sdk.chat === undefined) return sdk.languageModel(model.api.id)
+    if (shape === "responses") return sdk.responses(model.api.id)
+    if (shape === "completions") return sdk.chat(model.api.id)
+    return undefined
+  }
+
   const CUSTOM_LOADERS: Record<string, CustomLoader> = {
     async anthropic() {
       return {
@@ -165,10 +173,8 @@ export namespace Provider {
       return {
         autoload: false,
         async getModel(sdk: any, model: Model, _options?: Record<string, any>) {
-          const shape = model.api.shape
-          if (sdk.responses === undefined && sdk.chat === undefined) return sdk.languageModel(model.api.id)
-          if (shape === "responses") return sdk.responses(model.api.id)
-          if (shape === "completions") return sdk.chat(model.api.id)
+          const m = byShape(sdk, model)
+          if (m) return m
           return shouldUseCopilotResponsesApi(model.api.id) ? sdk.responses(model.api.id) : sdk.chat(model.api.id)
         },
         options: {},
@@ -178,10 +184,8 @@ export namespace Provider {
       return {
         autoload: false,
         async getModel(sdk: any, model: Model, _options?: Record<string, any>) {
-          const shape = model.api.shape
-          if (sdk.responses === undefined && sdk.chat === undefined) return sdk.languageModel(model.api.id)
-          if (shape === "responses") return sdk.responses(model.api.id)
-          if (shape === "completions") return sdk.chat(model.api.id)
+          const m = byShape(sdk, model)
+          if (m) return m
           return shouldUseCopilotResponsesApi(model.api.id) ? sdk.responses(model.api.id) : sdk.chat(model.api.id)
         },
         options: {},
@@ -191,9 +195,8 @@ export namespace Provider {
       return {
         autoload: false,
         async getModel(sdk: any, model: Model, options?: Record<string, any>) {
-          if (sdk.responses === undefined || sdk.chat === undefined) return sdk.languageModel(model.api.id)
-          if (model.api.shape === "completions") return sdk.chat(model.api.id)
-          if (model.api.shape === "responses") return sdk.responses(model.api.id)
+          const m = byShape(sdk, model)
+          if (m) return m
           if (options?.["useCompletionUrls"]) return sdk.chat(model.api.id)
           return sdk.responses(model.api.id)
         },
@@ -205,9 +208,8 @@ export namespace Provider {
       return {
         autoload: false,
         async getModel(sdk: any, model: Model, options?: Record<string, any>) {
-          if (sdk.responses === undefined || sdk.chat === undefined) return sdk.languageModel(model.api.id)
-          if (model.api.shape === "completions") return sdk.chat(model.api.id)
-          if (model.api.shape === "responses") return sdk.responses(model.api.id)
+          const m = byShape(sdk, model)
+          if (m) return m
           if (options?.["useCompletionUrls"]) return sdk.chat(model.api.id)
           return sdk.responses(model.api.id)
         },
