@@ -34,6 +34,11 @@ export namespace Plugin {
       project: Instance.project,
       worktree: Instance.worktree,
       directory: Instance.directory,
+      get serverUrl(): URL {
+        throw new Error("Server URL is no longer supported in plugins")
+      },
+      // @ts-expect-error
+      $: typeof Bun === "undefined" ? undefined : Bun.$,
     }
 
     for (const plugin of INTERNAL_PLUGINS) {
