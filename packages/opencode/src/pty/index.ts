@@ -1,6 +1,6 @@
 import { BusEvent } from "@/bus/bus-event"
 import { Bus } from "@/bus"
-import { type IPty } from "bun-pty"
+import type { Proc } from "#pty"
 import z from "zod"
 import { Identifier } from "../id/id"
 import { Log } from "../util/log"
@@ -35,10 +35,7 @@ export namespace Pty {
     return out
   }
 
-  const pty = lazy(async () => {
-    const { spawn } = await import("bun-pty")
-    return spawn
-  })
+  const pty = lazy(() => import("#pty"))
 
   export const Info = z
     .object({
@@ -85,7 +82,7 @@ export namespace Pty {
 
   interface ActiveSession {
     info: Info
-    process: IPty
+    process: Proc
     buffer: string
     bufferCursor: number
     cursor: number
@@ -121,6 +118,7 @@ export namespace Pty {
 
   export async function create(input: CreateInput) {
     const id = Identifier.create("pty", false)
+    const dir = Instance.directory
     const command = input.command || Shell.preferred()
     const args = input.args || []
     if (command.endsWith("sh")) {
@@ -144,7 +142,7 @@ export namespace Pty {
     }
     log.info("creating session", { id, cmd: command, args, cwd })
 
-    const spawn = await pty()
+    const { spawn } = await pty()
     const ptyProcess = spawn(command, args, {
       name: "xterm-256color",
       cwd,
@@ -197,11 +195,13 @@ export namespace Pty {
       session.bufferCursor += excess
     })
     ptyProcess.onExit(({ exitCode }) => {
-      if (session.info.status === "exited") return
-      log.info("session exited", { id, exitCode })
-      session.info.status = "exited"
-      Bus.publish(Event.Exited, { id, exitCode })
-      remove(id)
+      void Instance.run(dir, () => {
+        if (session.info.status === "exited") return
+        log.info("session exited", { id, exitCode })
+        session.info.status = "exited"
+        Bus.publish(Event.Exited, { id, exitCode })
+        remove(id)
+      })
     })
     Bus.publish(Event.Created, { info })
     return info

@@ -11,6 +11,7 @@
     "dev:web": "bun --cwd packages/app dev",
     "dev:storybook": "bun --cwd packages/storybook storybook",
     "typecheck": "bun turbo typecheck",
+    "postinstall": "bun run --cwd packages/opencode fix-node-pty",
     "prepare": "husky",
     "random": "echo 'Random script'",
     "hello": "echo 'Hello World!'",
@@ -98,6 +99,7 @@
   },
   "trustedDependencies": [
     "esbuild",
+    "node-pty",
     "protobufjs",
     "tree-sitter",
     "tree-sitter-bash",
