@@ -238,10 +238,18 @@ export function StatusPopover(props: { directory: string; placement?: "right-end
       }
       trigger={
         <div class="relative size-full flex items-center justify-center">
-          <Icon name={shown() ? "status-active" : "status"} size="normal" />
+          <div
+            class="size-full flex items-center justify-center"
+            style={{
+              "-webkit-mask-image": "radial-gradient(circle 5px at calc(100% - 8px) 8px, transparent 5px, black 5.5px)",
+              "mask-image": "radial-gradient(circle 5px at calc(100% - 8px) 8px, transparent 5px, black 5.5px)",
+            }}
+          >
+            <Icon name={shown() ? "status-active" : "status"} size="normal" />
+          </div>
           <div
             classList={{
-              "absolute top-1 right-1 size-1.5 rounded-full": true,
+              "absolute top-[5px] right-[5px] size-1.5 rounded-full z-10": true,
               "bg-icon-success-base": overallHealthy(),
               "bg-icon-critical-base": !overallHealthy() && server.healthy() !== undefined,
               "bg-border-weak-base": server.healthy() === undefined,
@@ -250,7 +258,7 @@ export function StatusPopover(props: { directory: string; placement?: "right-end
         </div>
       }
       class="[&_[data-slot=popover-body]]:p-0 w-[360px] max-w-[calc(100vw-40px)] bg-transparent border-0 shadow-none rounded-xl"
-      gutter={4}
+      gutter={8}
       placement={props.placement ?? "right-end"}
     >
       <div class="flex items-center gap-1 w-[360px] rounded-xl shadow-[var(--shadow-lg-border-base)]">
