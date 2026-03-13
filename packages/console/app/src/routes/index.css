@@ -389,10 +389,9 @@ body {
       gap: 40px;
       align-items: center;
       border: 1px solid var(--color-border-weak);
-      border-bottom: none;
+      border-bottom: 1px solid var(--color-border-weak);
       border-top-left-radius: 6px;
       border-top-right-radius: 6px;
-      background: var(--color-background-weak);
       padding: 0 20px;
 
       @media (max-width: 60rem) {
@@ -425,6 +424,7 @@ body {
     [data-slot="panels"] {
       background: var(--color-background-weak);
       border: 1px solid var(--color-border-weak);
+      border-top: none;
       border-bottom-left-radius: 6px;
       border-bottom-right-radius: 6px;
       padding: 16px;
