@@ -205,7 +205,10 @@ export function StatusModal(props: { directory: string }) {
           defaultValue="servers"
           variant="alt"
         >
-          <Tabs.List data-slot="tablist" class="bg-transparent border-b-0 px-4 pt-2 pb-0 gap-4 h-10">
+          <Tabs.List
+            data-slot="tablist"
+            class="bg-transparent border-b border-border-weak-base px-4 pt-2 pb-0 gap-4 h-10"
+          >
             <Tabs.Trigger value="servers" data-slot="tab" class="text-12-regular">
               {sortedServers().length > 0 ? `${sortedServers().length} ` : ""}
               {language.t("status.popover.tab.servers")}
