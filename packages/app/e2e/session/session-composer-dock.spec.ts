@@ -5,7 +5,7 @@ import {
   type ComposerProbeState,
   type ComposerWindow,
 } from "../../src/testing/session-composer"
-import { cleanupSession, clearSessionDockSeed, seedSessionQuestion } from "../actions"
+import { cleanupSession } from "../actions"
 import {
   permissionDockSelector,
   promptSelector,
@@ -13,8 +13,9 @@ import {
   sessionComposerDockSelector,
   sessionTodoToggleButtonSelector,
 } from "../selectors"
+import { createSdk } from "../utils"
 
-type Sdk = Parameters<typeof clearSessionDockSeed>[0]
+type Sdk = ReturnType<typeof createSdk>
 type PermissionRule = { permission: string; pattern: string; action: "allow" | "deny" | "ask" }
 
 async function withDockSession<T>(
@@ -35,14 +36,6 @@ async function withDockSession<T>(
 }
 
 test.setTimeout(120_000)
-
-async function withDockSeed<T>(sdk: Sdk, sessionID: string, fn: () => Promise<T>) {
-  try {
-    return await fn()
-  } finally {
-    await clearSessionDockSeed(sdk, sessionID).catch(() => undefined)
-  }
-}
 
 async function clearPermissionDock(page: any, label: RegExp) {
   const dock = page.locator(permissionDockSelector)
@@ -77,6 +70,65 @@ async function expectPermissionBlocked(page: any) {
 async function expectPermissionOpen(page: any) {
   await expect(page.locator(permissionDockSelector)).toHaveCount(0)
   await expect(page.locator(promptSelector)).toBeVisible()
+}
+
+async function withMockQuestion<T>(
+  page: any,
+  request: {
+    id: string
+    sessionID: string
+    questions: Array<{
+      header: string
+      question: string
+      options: Array<{ label: string; description: string }>
+      multiple?: boolean
+      custom?: boolean
+    }>
+  },
+  fn: (state: { resolved: () => Promise<void> }) => Promise<T>,
+) {
+  let pending = [
+    {
+      id: request.id,
+      sessionID: request.sessionID,
+      questions: request.questions,
+    },
+  ]
+
+  const list = async (route: any) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(pending),
+    })
+  }
+
+  const reply = async (route: any) => {
+    const url = new URL(route.request().url())
+    const id = url.pathname.split("/").at(-2)
+    pending = pending.filter((item) => item.id !== id)
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(true),
+    })
+  }
+
+  await page.route("**/question", list)
+  await page.route("**/question/*/reply", reply)
+
+  const state = {
+    async resolved() {
+      await expect.poll(() => pending.length, { timeout: 10_000 }).toBe(0)
+    },
+  }
+
+  try {
+    return await fn(state)
+  } finally {
+    await page.unroute("**/question", list)
+    await page.unroute("**/question/*/reply", reply)
+  }
 }
 
 async function todoDock(page: any, sessionID: string) {
@@ -275,10 +327,12 @@ test("auto-accept toggle works before first submit", async ({ page, gotoSession 
 
 test("blocked question flow unblocks after submit", async ({ page, sdk, gotoSession }) => {
   await withDockSession(sdk, "e2e composer dock question", async (session) => {
-    await withDockSeed(sdk, session.id, async () => {
-      await gotoSession(session.id)
+    await gotoSession(session.id)
 
-      await seedSessionQuestion(sdk, {
+    await withMockQuestion(
+      page,
+      {
+        id: "que_e2e_question",
         sessionID: session.id,
         questions: [
           {
@@ -290,16 +344,19 @@ test("blocked question flow unblocks after submit", async ({ page, sdk, gotoSess
             ],
           },
         ],
-      })
+      },
+      async (state) => {
+        await page.goto(page.url())
+        await expectQuestionBlocked(page)
 
-      const dock = page.locator(questionDockSelector)
-      await expectQuestionBlocked(page)
-
-      await dock.locator('[data-slot="question-option"]').first().click()
-      await dock.getByRole("button", { name: /submit/i }).click()
-
-      await expectQuestionOpen(page)
-    })
+        const dock = page.locator(questionDockSelector)
+        await dock.locator('[data-slot="question-option"]').first().click()
+        await dock.getByRole("button", { name: /submit/i }).click()
+        await state.resolved()
+        await page.goto(page.url())
+        await expectQuestionOpen(page)
+      },
+    )
   })
 })
 
@@ -400,8 +457,10 @@ test("child session question request blocks parent dock and unblocks after submi
     if (!child?.id) throw new Error("Child session create did not return an id")
 
     try {
-      await withDockSeed(sdk, child.id, async () => {
-        await seedSessionQuestion(sdk, {
+      await withMockQuestion(
+        page,
+        {
+          id: "que_e2e_child_question",
           sessionID: child.id,
           questions: [
             {
@@ -413,16 +472,19 @@ test("child session question request blocks parent dock and unblocks after submi
               ],
             },
           ],
-        })
+        },
+        async (state) => {
+          await page.goto(page.url())
+          await expectQuestionBlocked(page)
 
-        const dock = page.locator(questionDockSelector)
-        await expectQuestionBlocked(page)
-
-        await dock.locator('[data-slot="question-option"]').first().click()
-        await dock.getByRole("button", { name: /submit/i }).click()
-
-        await expectQuestionOpen(page)
-      })
+          const dock = page.locator(questionDockSelector)
+          await dock.locator('[data-slot="question-option"]').first().click()
+          await dock.getByRole("button", { name: /submit/i }).click()
+          await state.resolved()
+          await page.goto(page.url())
+          await expectQuestionOpen(page)
+        },
+      )
     } finally {
       await cleanupSession({ sdk, sessionID: child.id })
     }
@@ -506,10 +568,12 @@ test("todo dock transitions and collapse behavior", async ({ page, sdk, gotoSess
 
 test("keyboard focus stays off prompt while blocked", async ({ page, sdk, gotoSession }) => {
   await withDockSession(sdk, "e2e composer dock keyboard", async (session) => {
-    await withDockSeed(sdk, session.id, async () => {
-      await gotoSession(session.id)
+    await gotoSession(session.id)
 
-      await seedSessionQuestion(sdk, {
+    await withMockQuestion(
+      page,
+      {
+        id: "que_e2e_keyboard",
         sessionID: session.id,
         questions: [
           {
@@ -518,13 +582,15 @@ test("keyboard focus stays off prompt while blocked", async ({ page, sdk, gotoSe
             options: [{ label: "Continue", description: "Continue now" }],
           },
         ],
-      })
+      },
+      async () => {
+        await page.goto(page.url())
+        await expectQuestionBlocked(page)
 
-      await expectQuestionBlocked(page)
-
-      await page.locator("main").click({ position: { x: 5, y: 5 } })
-      await page.keyboard.type("abc")
-      await expect(page.locator(promptSelector)).toHaveCount(0)
-    })
+        await page.locator("main").click({ position: { x: 5, y: 5 } })
+        await page.keyboard.type("abc")
+        await expect(page.locator(promptSelector)).toHaveCount(0)
+      },
+    )
   })
 })
