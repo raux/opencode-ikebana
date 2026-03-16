@@ -10,7 +10,7 @@ import { Global } from "@/global"
 import { Filesystem } from "@/util/filesystem"
 import { Flag } from "@/flag/flag"
 import { Bus } from "@/bus"
-import { Discovery } from "./discovery"
+import { DiscoveryService } from "./discovery"
 import { Glob } from "../util/glob"
 import { pathToFileURL } from "url"
 import type { Agent } from "@/agent/agent"
@@ -106,6 +106,7 @@ export class SkillService extends ServiceMap.Service<SkillService, SkillService.
     SkillService,
     Effect.gen(function* () {
       const instance = yield* InstanceContext
+      const discovery = yield* DiscoveryService
 
       const skills: Record<string, Skill.Info> = {}
       const skillDirs = new Set<string>()
@@ -216,7 +217,7 @@ export class SkillService extends ServiceMap.Service<SkillService, SkillService.
 
           // Download and load skills from URLs
           for (const url of config.skills?.urls ?? []) {
-            const list = await Discovery.pull(url)
+            const list = await Effect.runPromise(discovery.pull(url))
             for (const dir of list) {
               skillDirs.add(dir)
               const matches = await Glob.scan(SKILL_PATTERN, {
@@ -262,5 +263,5 @@ export class SkillService extends ServiceMap.Service<SkillService, SkillService.
         }),
       })
     }),
-  )
+  ).pipe(Layer.provide(DiscoveryService.defaultLayer))
 }
