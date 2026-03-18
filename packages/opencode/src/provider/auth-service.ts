@@ -1,6 +1,6 @@
 import type { AuthOuathResult } from "@opencode-ai/plugin"
 import { NamedError } from "@opencode-ai/util/error"
-import * as Auth from "@/auth/service"
+import * as Auth from "@/auth/effect"
 import { ProviderID } from "./schema"
 import { Effect, Layer, Record, ServiceMap, Struct } from "effect"
 import { filter, fromEntries, map, pipe } from "remeda"
@@ -44,7 +44,7 @@ export const OauthCodeMissing = NamedError.create(
 export const OauthCallbackFailed = NamedError.create("ProviderAuthOauthCallbackFailed", z.object({}))
 
 export type ProviderAuthError =
-  | Auth.AuthServiceError
+  | Auth.AuthEffect.AuthServiceError
   | InstanceType<typeof OauthMissing>
   | InstanceType<typeof OauthCodeMissing>
   | InstanceType<typeof OauthCallbackFailed>
@@ -67,7 +67,7 @@ export class ProviderAuthService extends ServiceMap.Service<ProviderAuthService,
   static readonly layer = Layer.effect(
     ProviderAuthService,
     Effect.gen(function* () {
-      const auth = yield* Auth.AuthService
+      const auth = yield* Auth.AuthEffect.Service
       const hooks = yield* Effect.promise(async () => {
         const mod = await import("../plugin")
         return pipe(
@@ -139,5 +139,5 @@ export class ProviderAuthService extends ServiceMap.Service<ProviderAuthService,
     }),
   )
 
-  static readonly defaultLayer = ProviderAuthService.layer.pipe(Layer.provide(Auth.AuthService.defaultLayer))
+  static readonly defaultLayer = ProviderAuthService.layer.pipe(Layer.provide(Auth.AuthEffect.defaultLayer))
 }

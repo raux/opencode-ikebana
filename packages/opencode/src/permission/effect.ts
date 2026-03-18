@@ -109,7 +109,7 @@ export namespace PermissionEffect {
     message: z.string().optional(),
   })
 
-  export interface Api {
+  export interface Interface {
     readonly ask: (input: z.infer<typeof AskInput>) => Effect.Effect<void, Error>
     readonly reply: (input: z.infer<typeof ReplyInput>) => Effect.Effect<void>
     readonly list: () => Effect.Effect<Request[]>
@@ -129,7 +129,7 @@ export namespace PermissionEffect {
     return match ?? { action: "ask", permission, pattern: "*" }
   }
 
-  export class Service extends ServiceMap.Service<Service, Api>()("@opencode/PermissionNext") {}
+  export class Service extends ServiceMap.Service<Service, Interface>()("@opencode/PermissionNext") {}
 
   export const layer = Layer.effect(
     Service,
@@ -141,7 +141,7 @@ export namespace PermissionEffect {
       const pending = new Map<PermissionID, PendingEntry>()
       const approved: Ruleset = row?.data ?? []
 
-      const ask = Effect.fn("PermissionService.ask")(function* (input: z.infer<typeof AskInput>) {
+      const ask = Effect.fn("Permission.ask")(function* (input: z.infer<typeof AskInput>) {
         const { ruleset, ...request } = input
         let needsAsk = false
 
@@ -177,7 +177,7 @@ export namespace PermissionEffect {
         )
       })
 
-      const reply = Effect.fn("PermissionService.reply")(function* (input: z.infer<typeof ReplyInput>) {
+      const reply = Effect.fn("Permission.reply")(function* (input: z.infer<typeof ReplyInput>) {
         const existing = pending.get(input.requestID)
         if (!existing) return
 
@@ -234,7 +234,7 @@ export namespace PermissionEffect {
         }
       })
 
-      const list = Effect.fn("PermissionService.list")(function* () {
+      const list = Effect.fn("Permission.list")(function* () {
         return Array.from(pending.values(), (item) => item.info)
       })
 

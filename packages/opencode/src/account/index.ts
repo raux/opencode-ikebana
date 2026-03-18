@@ -1,27 +1,33 @@
 import { Effect, Option } from "effect"
 
+import { AccountEffect } from "./effect"
 import {
+  AccessToken as Token,
   Account as AccountSchema,
   type AccountError,
-  type AccessToken,
-  AccountID,
-  AccountService,
-  OrgID,
-} from "./service"
-
-export { AccessToken, AccountID, OrgID } from "./service"
+  AccountID as ID,
+  OrgID as Org,
+} from "./schema"
 
 import { runtime } from "@/effect/runtime"
 
-function runSync<A>(f: (service: AccountService.Service) => Effect.Effect<A, AccountError>) {
-  return runtime.runSync(AccountService.use(f))
+export { AccessToken, AccountID, OrgID } from "./schema"
+
+function runSync<A>(f: (service: AccountEffect.Interface) => Effect.Effect<A, AccountEffect.Error>) {
+  return runtime.runSync(AccountEffect.Service.use(f))
 }
 
-function runPromise<A>(f: (service: AccountService.Service) => Effect.Effect<A, AccountError>) {
-  return runtime.runPromise(AccountService.use(f))
+function runPromise<A>(f: (service: AccountEffect.Interface) => Effect.Effect<A, AccountError>) {
+  return runtime.runPromise(AccountEffect.Service.use(f))
 }
 
 export namespace Account {
+  export const AccessToken = Token
+  export type AccessToken = Token
+  export const AccountID = ID
+  export type AccountID = ID
+  export const OrgID = Org
+  export type OrgID = Org
   export const Account = AccountSchema
   export type Account = AccountSchema
 

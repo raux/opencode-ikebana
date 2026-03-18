@@ -1,12 +1,12 @@
 import { Effect } from "effect"
 import z from "zod"
 import { runtime } from "@/effect/runtime"
-import * as S from "./service"
+import * as S from "./effect"
 
-export { OAUTH_DUMMY_KEY } from "./service"
+export const OAUTH_DUMMY_KEY = S.AuthEffect.OAUTH_DUMMY_KEY
 
-function runPromise<A>(f: (service: S.AuthService.Service) => Effect.Effect<A, S.AuthServiceError>) {
-  return runtime.runPromise(S.AuthService.use(f))
+function runPromise<A>(f: (service: S.AuthEffect.Interface) => Effect.Effect<A, S.AuthEffect.Error>) {
+  return runtime.runPromise(S.AuthEffect.Service.use(f))
 }
 
 export namespace Auth {

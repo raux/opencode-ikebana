@@ -3,7 +3,7 @@ import { Config } from "@/config/config"
 import { fn } from "@/util/fn"
 import { Wildcard } from "@/util/wildcard"
 import os from "os"
-import { PermissionEffect as S } from "./service"
+import { PermissionEffect as S } from "./effect"
 
 export namespace PermissionNext {
   function expand(pattern: string): string {
