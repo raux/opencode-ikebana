@@ -12,6 +12,7 @@ import { Skill } from "../skill"
 import { Log } from "../util/log"
 
 export namespace Command {
+<<<<<<< HEAD
   const log = Log.create({ service: "command" })
 
   type State = {
@@ -19,6 +20,10 @@ export namespace Command {
     ensure: () => Promise<void>
   }
 
+||||||| parent of b53a95fd8 (log errors in catchCause instead of silently swallowing)
+=======
+  const log = Log.create({ service: "command" })
+>>>>>>> b53a95fd8 (log errors in catchCause instead of silently swallowing)
   export const Event = {
     Executed: BusEvent.define(
       "command.executed",
@@ -318,7 +323,7 @@ export namespace Command {
 >>>>>>> 8e11a46fe (use forkScoped + Fiber.join for lazy init (match old Instance.state behavior))
 
       const loadFiber = yield* load().pipe(
-        Effect.catchCause(() => Effect.void),
+        Effect.catchCause((cause) => Effect.sync(() => log.error("init failed", { cause }))),
         Effect.forkScoped,
       )
 
