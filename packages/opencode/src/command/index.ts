@@ -2,7 +2,7 @@ import { BusEvent } from "@/bus/bus-event"
 import { InstanceContext } from "@/effect/instance-context"
 import { runPromiseInstance } from "@/effect/runtime"
 import { SessionID, MessageID } from "@/session/schema"
-import { Effect, Layer, ServiceMap } from "effect"
+import { Effect, Fiber, Layer, ServiceMap } from "effect"
 import z from "zod"
 import { Config } from "../config/config"
 import PROMPT_INITIALIZE from "./template/initialize.txt"
@@ -70,11 +70,13 @@ export namespace Command {
     Effect.gen(function* () {
       const instance = yield* InstanceContext
 
-      const commands = yield* Effect.promise(async () => {
-        const cfg = await Config.get()
+      const commands: Record<string, Info> = {}
 
-        const result: Record<string, Info> = {
-          [Default.INIT]: {
+      const load = Effect.fn("Command.load")(function* () {
+        yield* Effect.promise(async () => {
+          const cfg = await Config.get()
+
+          commands[Default.INIT] = {
             name: Default.INIT,
             description: "create/update AGENTS.md",
             source: "command",
@@ -82,8 +84,8 @@ export namespace Command {
               return PROMPT_INITIALIZE.replace("${path}", instance.worktree)
             },
             hints: hints(PROMPT_INITIALIZE),
-          },
-          [Default.REVIEW]: {
+          }
+          commands[Default.REVIEW] = {
             name: Default.REVIEW,
             description: "review changes [commit|branch|pr], defaults to uncommitted",
             source: "command",
@@ -92,73 +94,78 @@ export namespace Command {
             },
             subtask: true,
             hints: hints(PROMPT_REVIEW),
-          },
-        }
-
-        for (const [name, command] of Object.entries(cfg.command ?? {})) {
-          result[name] = {
-            name,
-            agent: command.agent,
-            model: command.model,
-            description: command.description,
-            source: "command",
-            get template() {
-              return command.template
-            },
-            subtask: command.subtask,
-            hints: hints(command.template),
           }
-        }
-        for (const [name, prompt] of Object.entries(await MCP.prompts())) {
-          result[name] = {
-            name,
-            source: "mcp",
-            description: prompt.description,
-            get template() {
-              // since a getter can't be async we need to manually return a promise here
-              return new Promise<string>(async (resolve, reject) => {
-                const template = await MCP.getPrompt(
-                  prompt.client,
-                  prompt.name,
-                  prompt.arguments
-                    ? // substitute each argument with $1, $2, etc.
-                      Object.fromEntries(prompt.arguments?.map((argument, i) => [argument.name, `$${i + 1}`]))
-                    : {},
-                ).catch(reject)
-                resolve(
-                  template?.messages
-                    .map((message) => (message.content.type === "text" ? message.content.text : ""))
-                    .join("\n") || "",
-                )
-              })
-            },
-            hints: prompt.arguments?.map((_, i) => `$${i + 1}`) ?? [],
-          }
-        }
 
-        // Add skills as invokable commands
-        for (const skill of await Skill.all()) {
-          // Skip if a command with this name already exists
-          if (result[skill.name]) continue
-          result[skill.name] = {
-            name: skill.name,
-            description: skill.description,
-            source: "skill",
-            get template() {
-              return skill.content
-            },
-            hints: [],
+          for (const [name, command] of Object.entries(cfg.command ?? {})) {
+            commands[name] = {
+              name,
+              agent: command.agent,
+              model: command.model,
+              description: command.description,
+              source: "command",
+              get template() {
+                return command.template
+              },
+              subtask: command.subtask,
+              hints: hints(command.template),
+            }
           }
-        }
+          for (const [name, prompt] of Object.entries(await MCP.prompts())) {
+            commands[name] = {
+              name,
+              source: "mcp",
+              description: prompt.description,
+              get template() {
+                // since a getter can't be async we need to manually return a promise here
+                return new Promise<string>(async (resolve, reject) => {
+                  const template = await MCP.getPrompt(
+                    prompt.client,
+                    prompt.name,
+                    prompt.arguments
+                      ? // substitute each argument with $1, $2, etc.
+                        Object.fromEntries(prompt.arguments?.map((argument, i) => [argument.name, `$${i + 1}`]))
+                      : {},
+                  ).catch(reject)
+                  resolve(
+                    template?.messages
+                      .map((message) => (message.content.type === "text" ? message.content.text : ""))
+                      .join("\n") || "",
+                  )
+                })
+              },
+              hints: prompt.arguments?.map((_, i) => `$${i + 1}`) ?? [],
+            }
+          }
 
-        return result
+          // Add skills as invokable commands
+          for (const skill of await Skill.all()) {
+            // Skip if a command with this name already exists
+            if (commands[skill.name]) continue
+            commands[skill.name] = {
+              name: skill.name,
+              description: skill.description,
+              source: "skill",
+              get template() {
+                return skill.content
+              },
+              hints: [],
+            }
+          }
+        })
       })
 
+      const loadFiber = yield* load().pipe(
+        Effect.catchCause(() => Effect.void),
+        Effect.forkScoped,
+      )
+
       const get = Effect.fn("Command.get")(function* (name: string) {
+        yield* Fiber.join(loadFiber)
         return commands[name]
       })
 
       const list = Effect.fn("Command.list")(function* () {
+        yield* Fiber.join(loadFiber)
         return Object.values(commands)
       })
 
