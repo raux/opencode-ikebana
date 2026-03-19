@@ -127,7 +127,7 @@ export namespace Bus {
     // disposal happens. In the Effect-native path, forkScoped + scope
     // closure handles this correctly. This bridge can be removed once
     // upstream PubSub.shutdown properly wakes suspended subscribers:
-    // https://github.com/Effect-TS/effect-smol/issues/TBD
+    // https://github.com/Effect-TS/effect-smol/pull/1800
     const onDispose = (evt: { directory?: string; payload: any }) => {
       if (evt.payload.type !== InstanceDisposed.type) return
       if (evt.directory !== directory) return
