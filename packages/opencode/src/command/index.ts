@@ -1,15 +1,24 @@
 import { BusEvent } from "@/bus/bus-event"
+import { InstanceState } from "@/effect/instance-state"
+import { makeRunPromise } from "@/effect/run-service"
 import { SessionID, MessageID } from "@/session/schema"
+import { Effect, Layer, ServiceMap } from "effect"
 import z from "zod"
 import { Config } from "../config/config"
-import { Instance } from "../project/instance"
-import { Identifier } from "../id/id"
 import PROMPT_INITIALIZE from "./template/initialize.txt"
 import PROMPT_REVIEW from "./template/review.txt"
 import { MCP } from "../mcp"
 import { Skill } from "../skill"
+import { Log } from "../util/log"
 
 export namespace Command {
+  const log = Log.create({ service: "command" })
+
+  type State = {
+    commands: Record<string, Info>
+    ensure: () => Promise<void>
+  }
+
   export const Event = {
     Executed: BusEvent.define(
       "command.executed",
@@ -29,8 +38,6 @@ export namespace Command {
       agent: z.string().optional(),
       model: z.string().optional(),
       source: z.enum(["command", "mcp", "skill"]).optional(),
-      // workaround for zod not supporting async functions natively so we use getters
-      // https://zod.dev/v4/changelog?id=zfunction
       template: z.promise(z.string()).or(z.string()),
       subtask: z.boolean().optional(),
       hints: z.array(z.string()),
@@ -39,7 +46,6 @@ export namespace Command {
       ref: "Command",
     })
 
-  // for some reason zod is inferring `string` for z.promise(z.string()).or(z.string()) so we have to manually override it
   export type Info = Omit<z.infer<typeof Info>, "template"> & { template: Promise<string> | string }
 
   export function hints(template: string): string[] {
@@ -57,95 +63,136 @@ export namespace Command {
     REVIEW: "review",
   } as const
 
-  const state = Instance.state(async () => {
-    const cfg = await Config.get()
+  export interface Interface {
+    readonly get: (name: string) => Effect.Effect<Info | undefined>
+    readonly list: () => Effect.Effect<Info[]>
+  }
 
-    const result: Record<string, Info> = {
-      [Default.INIT]: {
-        name: Default.INIT,
-        description: "create/update AGENTS.md",
-        source: "command",
-        get template() {
-          return PROMPT_INITIALIZE.replace("${path}", Instance.worktree)
-        },
-        hints: hints(PROMPT_INITIALIZE),
-      },
-      [Default.REVIEW]: {
-        name: Default.REVIEW,
-        description: "review changes [commit|branch|pr], defaults to uncommitted",
-        source: "command",
-        get template() {
-          return PROMPT_REVIEW.replace("${path}", Instance.worktree)
-        },
-        subtask: true,
-        hints: hints(PROMPT_REVIEW),
-      },
-    }
+  export class Service extends ServiceMap.Service<Service, Interface>()("@opencode/Command") {}
 
-    for (const [name, command] of Object.entries(cfg.command ?? {})) {
-      result[name] = {
-        name,
-        agent: command.agent,
-        model: command.model,
-        description: command.description,
-        source: "command",
-        get template() {
-          return command.template
-        },
-        subtask: command.subtask,
-        hints: hints(command.template),
-      }
-    }
-    for (const [name, prompt] of Object.entries(await MCP.prompts())) {
-      result[name] = {
-        name,
-        source: "mcp",
-        description: prompt.description,
-        get template() {
-          // since a getter can't be async we need to manually return a promise here
-          return new Promise<string>(async (resolve, reject) => {
-            const template = await MCP.getPrompt(
-              prompt.client,
-              prompt.name,
-              prompt.arguments
-                ? // substitute each argument with $1, $2, etc.
-                  Object.fromEntries(prompt.arguments?.map((argument, i) => [argument.name, `$${i + 1}`]))
-                : {},
-            ).catch(reject)
-            resolve(
-              template?.messages
-                .map((message) => (message.content.type === "text" ? message.content.text : ""))
-                .join("\n") || "",
-            )
-          })
-        },
-        hints: prompt.arguments?.map((_, i) => `$${i + 1}`) ?? [],
-      }
-    }
+  export const layer = Layer.effect(
+    Service,
+    Effect.gen(function* () {
+      const cache = yield* InstanceState.make<State>(
+        Effect.fn("Command.state")(function* (ctx) {
+          const commands: Record<string, Info> = {}
+          let task: Promise<void> | undefined
 
-    // Add skills as invokable commands
-    for (const skill of await Skill.all()) {
-      // Skip if a command with this name already exists
-      if (result[skill.name]) continue
-      result[skill.name] = {
-        name: skill.name,
-        description: skill.description,
-        source: "skill",
-        get template() {
-          return skill.content
-        },
-        hints: [],
-      }
-    }
+          async function load() {
+            const cfg = await Config.get()
 
-    return result
-  })
+            commands[Default.INIT] = {
+              name: Default.INIT,
+              description: "create/update AGENTS.md",
+              source: "command",
+              get template() {
+                return PROMPT_INITIALIZE.replace("${path}", ctx.worktree)
+              },
+              hints: hints(PROMPT_INITIALIZE),
+            }
+            commands[Default.REVIEW] = {
+              name: Default.REVIEW,
+              description: "review changes [commit|branch|pr], defaults to uncommitted",
+              source: "command",
+              get template() {
+                return PROMPT_REVIEW.replace("${path}", ctx.worktree)
+              },
+              subtask: true,
+              hints: hints(PROMPT_REVIEW),
+            }
+
+            for (const [name, command] of Object.entries(cfg.command ?? {})) {
+              commands[name] = {
+                name,
+                agent: command.agent,
+                model: command.model,
+                description: command.description,
+                source: "command",
+                get template() {
+                  return command.template
+                },
+                subtask: command.subtask,
+                hints: hints(command.template),
+              }
+            }
+
+            for (const [name, prompt] of Object.entries(await MCP.prompts())) {
+              commands[name] = {
+                name,
+                source: "mcp",
+                description: prompt.description,
+                get template() {
+                  return new Promise<string>(async (resolve, reject) => {
+                    const template = await MCP.getPrompt(
+                      prompt.client,
+                      prompt.name,
+                      prompt.arguments
+                        ? Object.fromEntries(prompt.arguments.map((argument, i) => [argument.name, `$${i + 1}`]))
+                        : {},
+                    ).catch(reject)
+                    resolve(
+                      template?.messages
+                        .map((message) => (message.content.type === "text" ? message.content.text : ""))
+                        .join("\n") || "",
+                    )
+                  })
+                },
+                hints: prompt.arguments?.map((_, i) => `$${i + 1}`) ?? [],
+              }
+            }
+
+            for (const skill of await Skill.all()) {
+              if (commands[skill.name]) continue
+              commands[skill.name] = {
+                name: skill.name,
+                description: skill.description,
+                source: "skill",
+                get template() {
+                  return skill.content
+                },
+                hints: [],
+              }
+            }
+          }
+
+          return {
+            commands,
+            ensure: () => {
+              task ??= Effect.runPromise(
+                Effect.tryPromise({
+                  try: load,
+                  catch: (cause) => cause,
+                }).pipe(Effect.catchCause((cause) => Effect.sync(() => log.error("init failed", { cause })))),
+              )
+              return task
+            },
+          }
+        }),
+      )
+
+      const get = Effect.fn("Command.get")(function* (name: string) {
+        const state = yield* InstanceState.get(cache)
+        yield* Effect.promise(() => state.ensure())
+        return state.commands[name]
+      })
+
+      const list = Effect.fn("Command.list")(function* () {
+        const state = yield* InstanceState.get(cache)
+        yield* Effect.promise(() => state.ensure())
+        return Object.values(state.commands)
+      })
+
+      return Service.of({ get, list })
+    }),
+  )
+
+  const runPromise = makeRunPromise(Service, layer)
 
   export async function get(name: string) {
-    return state().then((x) => x[name])
+    return runPromise((svc) => svc.get(name))
   }
 
   export async function list() {
-    return state().then((x) => Object.values(x))
+    return runPromise((svc) => svc.list())
   }
 }
