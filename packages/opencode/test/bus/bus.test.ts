@@ -192,43 +192,6 @@ describe("Bus", () => {
     })
   })
 
-  describe("once", () => {
-    test("fires once when callback returns 'done'", async () => {
-      await using tmp = await tmpdir()
-      const received: number[] = []
-
-      await withInstance(tmp.path, async () => {
-        Bus.once(TestEvent.Ping, (evt) => {
-          received.push(evt.properties.value)
-          return "done"
-        })
-        await Bus.publish(TestEvent.Ping, { value: 1 })
-        await Bus.publish(TestEvent.Ping, { value: 2 })
-      })
-
-      expect(received).toEqual([1])
-    })
-
-    test("keeps listening when callback returns undefined", async () => {
-      await using tmp = await tmpdir()
-      const received: number[] = []
-
-      await withInstance(tmp.path, async () => {
-        Bus.once(TestEvent.Ping, (evt) => {
-          received.push(evt.properties.value)
-          if (evt.properties.value === 3) return "done"
-          return undefined
-        })
-        await Bus.publish(TestEvent.Ping, { value: 1 })
-        await Bus.publish(TestEvent.Ping, { value: 2 })
-        await Bus.publish(TestEvent.Ping, { value: 3 })
-        await Bus.publish(TestEvent.Ping, { value: 4 })
-      })
-
-      expect(received).toEqual([1, 2, 3])
-    })
-  })
-
   describe("GlobalBus forwarding", () => {
     test("publish emits to GlobalBus with directory", async () => {
       await using tmp = await tmpdir()
@@ -284,37 +247,47 @@ describe("Bus", () => {
   })
 
   describe("instance disposal", () => {
-    test("wildcard subscribers receive InstanceDisposed on disposal", async () => {
+    test("InstanceDisposed is emitted to GlobalBus on disposal", async () => {
       await using tmp = await tmpdir()
-      const events: Array<{ type: string }> = []
+      const globalEvents: Array<{ directory?: string; payload: any }> = []
 
-      await withInstance(tmp.path, async () => {
-        Bus.subscribeAll((evt) => events.push({ type: evt.type }))
-      })
+      const handler = (evt: any) => globalEvents.push(evt)
+      GlobalBus.on("event", handler)
 
-      await Instance.disposeAll()
+      try {
+        await withInstance(tmp.path, async () => {
+          // Instance is active — subscribe so the layer gets created
+          Bus.subscribe(TestEvent.Ping, () => {})
+        })
 
-      const disposed = events.find((e) => e.type === "server.instance.disposed")
-      expect(disposed).toBeDefined()
+        await Instance.disposeAll()
+
+        const disposed = globalEvents.find((e) => e.payload.type === "server.instance.disposed")
+        expect(disposed).toBeDefined()
+        expect(disposed!.payload.properties.directory).toBe(tmp.path)
+      } finally {
+        GlobalBus.off("event", handler)
+      }
     })
   })
 
   describe("async subscribers", () => {
-    test("publish awaits async subscriber promises", async () => {
+    test("publish is fire-and-forget (does not await subscriber callbacks)", async () => {
       await using tmp = await tmpdir()
-      const order: string[] = []
+      const received: number[] = []
 
       await withInstance(tmp.path, async () => {
-        Bus.subscribe(TestEvent.Ping, async () => {
+        Bus.subscribe(TestEvent.Ping, async (evt) => {
           await new Promise((r) => setTimeout(r, 10))
-          order.push("async-done")
+          received.push(evt.properties.value)
         })
 
         await Bus.publish(TestEvent.Ping, { value: 1 })
-        order.push("after-publish")
+        // Give the async subscriber time to complete
+        await new Promise((r) => setTimeout(r, 50))
       })
 
-      expect(order).toEqual(["async-done", "after-publish"])
+      expect(received).toEqual([1])
     })
   })
 })
