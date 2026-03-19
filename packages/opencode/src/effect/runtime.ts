@@ -1,4 +1,4 @@
-import { Effect, Layer, ManagedRuntime } from "effect"
+import { Effect, Fiber, Layer, ManagedRuntime } from "effect"
 import { AccountEffect } from "@/account/effect"
 import { AuthEffect } from "@/auth/effect"
 import { Instances } from "@/effect/instances"
@@ -16,6 +16,12 @@ export const runtime = ManagedRuntime.make(
 
 export function runPromiseInstance<A, E>(effect: Effect.Effect<A, E, InstanceServices>) {
   return runtime.runPromise(effect.pipe(Effect.provide(Instances.get(Instance.directory))))
+}
+
+export function forkInstance<A, E>(
+  effect: Effect.Effect<A, E, InstanceServices>,
+): Fiber.Fiber<A, E> {
+  return runtime.runFork(effect.pipe(Effect.provide(Instances.get(Instance.directory))))
 }
 
 export function runCallbackInstance<A, E>(

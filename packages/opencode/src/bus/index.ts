@@ -1,10 +1,11 @@
 import z from "zod"
-import { Effect, Layer, PubSub, ServiceMap, Stream } from "effect"
+import { Effect, Fiber, Layer, PubSub, ServiceMap, Stream } from "effect"
 import { Log } from "../util/log"
 import { Instance } from "../project/instance"
 import { BusEvent } from "./bus-event"
 import { GlobalBus } from "./global"
-import { runCallbackInstance, runPromiseInstance } from "../effect/runtime"
+import { registerDisposer } from "../effect/instance-registry"
+import { forkInstance, runCallbackInstance, runPromiseInstance } from "../effect/runtime"
 
 export namespace Bus {
   const log = Log.create({ service: "bus" })
@@ -51,10 +52,7 @@ export namespace Bus {
         return ps
       })
 
-      function publish<D extends BusEvent.Definition>(
-        def: D,
-        properties: z.output<D["properties"]>,
-      ) {
+      function publish<D extends BusEvent.Definition>(def: D, properties: z.output<D["properties"]>) {
         return Effect.gen(function* () {
           const payload: Payload = { type: def.type, properties }
           log.info("publishing", { type: def.type })
@@ -97,9 +95,7 @@ export namespace Bus {
 
   function runStream(stream: (svc: Interface) => Stream.Stream<Payload>, callback: (event: any) => void) {
     return runCallbackInstance(
-      Service.use((svc) =>
-        stream(svc).pipe(Stream.runForEach((msg) => Effect.sync(() => callback(msg)))),
-      ),
+      Service.use((svc) => stream(svc).pipe(Stream.runForEach((msg) => Effect.sync(() => callback(msg))))),
     )
   }
 
@@ -107,14 +103,39 @@ export namespace Bus {
     return runPromiseInstance(Service.use((svc) => svc.publish(def, properties)))
   }
 
-  export function subscribe<D extends BusEvent.Definition>(
-    def: D,
-    callback: (event: Payload<D>) => void,
-  ) {
+  export function subscribe<D extends BusEvent.Definition>(def: D, callback: (event: Payload<D>) => void) {
     return runStream((svc) => svc.subscribe(def), callback)
   }
 
   export function subscribeAll(callback: (event: any) => void) {
-    return runStream((svc) => svc.subscribeAll(), callback)
+    const directory = Instance.directory
+    let manualUnsub = false
+
+    const fiber = forkInstance(
+      Service.use((svc) =>
+        svc.subscribeAll().pipe(Stream.runForEach((msg) => Effect.sync(() => callback(msg)))),
+      ).pipe(
+        Effect.ensuring(
+          Effect.sync(() => {
+            if (!manualUnsub) {
+              callback({ type: InstanceDisposed.type, properties: { directory } })
+            }
+          }),
+        ),
+      ),
+    )
+
+    // Interrupt the fiber before the layer is invalidated, awaiting
+    // completion so the refCount drops and the scope can close.
+    const unregister = registerDisposer(
+      (dir) => (dir !== directory ? Promise.resolve() : Effect.runPromise(Fiber.interrupt(fiber))),
+      -1,
+    )
+
+    return () => {
+      manualUnsub = true
+      unregister()
+      fiber.interruptUnsafe()
+    }
   }
 }
