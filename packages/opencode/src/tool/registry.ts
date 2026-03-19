@@ -30,7 +30,7 @@ import { Truncate } from "./truncate"
 import { ApplyPatchTool } from "./apply_patch"
 import { Glob } from "../util/glob"
 import { pathToFileURL } from "url"
-import { Effect, Layer, ServiceMap } from "effect"
+import { Effect, Fiber, Layer, ServiceMap } from "effect"
 import { InstanceContext } from "@/effect/instance-context"
 import { runPromiseInstance } from "@/effect/runtime"
 
@@ -55,28 +55,35 @@ export namespace ToolRegistry {
 
       const custom: Tool.Info[] = []
 
-      yield* Effect.promise(async () => {
-        const matches = await Config.directories().then((dirs) =>
-          dirs.flatMap((dir) =>
-            Glob.scanSync("{tool,tools}/*.{js,ts}", { cwd: dir, absolute: true, dot: true, symlink: true }),
-          ),
-        )
-        if (matches.length) await Config.waitForDependencies()
-        for (const match of matches) {
-          const namespace = path.basename(match, path.extname(match))
-          const mod = await import(pathToFileURL(match).href)
-          for (const [id, def] of Object.entries<ToolDefinition>(mod)) {
-            custom.push(fromPlugin(id === "default" ? namespace : `${namespace}_${id}`, def))
+      const load = Effect.fn("ToolRegistry.load")(function* () {
+        yield* Effect.promise(async () => {
+          const matches = await Config.directories().then((dirs) =>
+            dirs.flatMap((dir) =>
+              Glob.scanSync("{tool,tools}/*.{js,ts}", { cwd: dir, absolute: true, dot: true, symlink: true }),
+            ),
+          )
+          if (matches.length) await Config.waitForDependencies()
+          for (const match of matches) {
+            const namespace = path.basename(match, path.extname(match))
+            const mod = await import(pathToFileURL(match).href)
+            for (const [id, def] of Object.entries<ToolDefinition>(mod)) {
+              custom.push(fromPlugin(id === "default" ? namespace : `${namespace}_${id}`, def))
+            }
           }
-        }
 
-        const plugins = await Plugin.list()
-        for (const plugin of plugins) {
-          for (const [id, def] of Object.entries(plugin.tool ?? {})) {
-            custom.push(fromPlugin(id, def))
+          const plugins = await Plugin.list()
+          for (const plugin of plugins) {
+            for (const [id, def] of Object.entries(plugin.tool ?? {})) {
+              custom.push(fromPlugin(id, def))
+            }
           }
-        }
+        })
       })
+
+      const loadFiber = yield* load().pipe(
+        Effect.catchCause(() => Effect.void),
+        Effect.forkScoped,
+      )
 
       function fromPlugin(id: string, def: ToolDefinition): Tool.Info {
         return {
@@ -131,6 +138,7 @@ export namespace ToolRegistry {
       }
 
       const register = Effect.fn("ToolRegistry.register")(function* (tool: Tool.Info) {
+        yield* Fiber.join(loadFiber)
         const idx = custom.findIndex((t) => t.id === tool.id)
         if (idx >= 0) {
           custom.splice(idx, 1, tool)
@@ -140,6 +148,7 @@ export namespace ToolRegistry {
       })
 
       const ids = Effect.fn("ToolRegistry.ids")(function* () {
+        yield* Fiber.join(loadFiber)
         const tools = yield* Effect.promise(() => all())
         return tools.map((t) => t.id)
       })
@@ -148,6 +157,7 @@ export namespace ToolRegistry {
         model: { providerID: ProviderID; modelID: ModelID },
         agent?: Agent.Info,
       ) {
+        yield* Fiber.join(loadFiber)
         const allTools = yield* Effect.promise(() => all())
         return yield* Effect.promise(() =>
           Promise.all(
