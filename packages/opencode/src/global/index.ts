@@ -18,7 +18,7 @@ export namespace Global {
       return process.env.OPENCODE_TEST_HOME || os.homedir()
     },
     data,
-    bin: path.join(cache, "bin"),
+    bin: path.join(data, "bin"),
     log: path.join(data, "log"),
     cache,
     config,
