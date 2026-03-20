@@ -71,11 +71,10 @@ export const prettier: Info = {
         devDependencies?: Record<string, string>
       }>(item)
       if (json.dependencies?.prettier || json.devDependencies?.prettier) {
-    if (json.dependencies?.prettier || json.devDependencies?.prettier) {
-      const bin = await Npm.which("prettier").catch(() => null)
-      if (!bin) return false
-      return [bin, "--write", "$FILE"]
-    }
+        const bin = await Npm.which("prettier").catch(() => null)
+        if (!bin) return false
+        return [bin, "--write", "$FILE"]
+      }
     }
     return false
   },
