@@ -8,6 +8,7 @@ import { Instance } from "@/project/instance"
 import { Vcs } from "@/project/vcs"
 import { ProviderAuth } from "@/provider/auth"
 import { Question } from "@/question"
+import { SessionStatus } from "@/session/status"
 import { Skill } from "@/skill/skill"
 import { Snapshot } from "@/snapshot"
 import { InstanceContext } from "./instance-context"
@@ -24,6 +25,7 @@ export type InstanceServices =
   | FileTime.Service
   | Format.Service
   | File.Service
+  | SessionStatus.Service
   | Skill.Service
   | Snapshot.Service
 
@@ -44,6 +46,7 @@ function lookup(_key: string) {
     Layer.fresh(FileTime.layer).pipe(Layer.orDie),
     Layer.fresh(Format.layer),
     Layer.fresh(File.layer),
+    Layer.fresh(SessionStatus.layer),
     Layer.fresh(Skill.defaultLayer),
     Layer.fresh(Snapshot.defaultLayer),
   ).pipe(Layer.provide(ctx))

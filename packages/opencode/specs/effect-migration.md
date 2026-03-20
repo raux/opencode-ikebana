@@ -123,6 +123,7 @@ Done now:
 - [x] `Discovery`
 - [x] `File`
 - [x] `Snapshot`
+- [x] `SessionStatus`
 
 Still open and likely worth migrating:
 
