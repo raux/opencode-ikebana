@@ -1,10 +1,11 @@
 import { Config } from "../config/config"
 import z from "zod"
 import { Provider } from "../provider/provider"
+import { ModelID, ProviderID } from "../provider/schema"
 import { generateObject, streamObject, type ModelMessage } from "ai"
 import { SystemPrompt } from "../session/system"
 import { Instance } from "../project/instance"
-import { Truncate } from "../tool/truncation"
+import { Truncate } from "../tool/truncate"
 import { Auth } from "../auth"
 import { ProviderTransform } from "../provider/transform"
 
@@ -13,7 +14,7 @@ import PROMPT_COMPACTION from "./prompt/compaction.txt"
 import PROMPT_EXPLORE from "./prompt/explore.txt"
 import PROMPT_SUMMARY from "./prompt/summary.txt"
 import PROMPT_TITLE from "./prompt/title.txt"
-import { PermissionNext } from "@/permission/next"
+import { PermissionNext } from "@/permission"
 import { mergeDeep, pipe, sortBy, values } from "remeda"
 import { Global } from "@/global"
 import path from "path"
@@ -34,8 +35,8 @@ export namespace Agent {
       permission: PermissionNext.Ruleset,
       model: z
         .object({
-          modelID: z.string(),
-          providerID: z.string(),
+          modelID: ModelID.zod,
+          providerID: ProviderID.zod,
         })
         .optional(),
       variant: z.string().optional(),
@@ -52,13 +53,13 @@ export namespace Agent {
     const cfg = await Config.get()
 
     const skillDirs = await Skill.dirs()
+    const whitelistedDirs = [Truncate.GLOB, ...skillDirs.map((dir) => path.join(dir, "*"))]
     const defaults = PermissionNext.fromConfig({
       "*": "allow",
       doom_loop: "ask",
       external_directory: {
         "*": "ask",
-        [Truncate.GLOB]: "allow",
-        ...Object.fromEntries(skillDirs.map((dir) => [path.join(dir, "*"), "allow"])),
+        ...Object.fromEntries(whitelistedDirs.map((dir) => [dir, "allow"])),
       },
       question: "deny",
       plan_enter: "deny",
@@ -143,7 +144,8 @@ export namespace Agent {
             codesearch: "allow",
             read: "allow",
             external_directory: {
-              [Truncate.GLOB]: "allow",
+              "*": "ask",
+              ...Object.fromEntries(whitelistedDirs.map((dir) => [dir, "allow"])),
             },
           }),
           user,
@@ -259,7 +261,10 @@ export namespace Agent {
     return pipe(
       await state(),
       values(),
-      sortBy([(x) => (cfg.default_agent ? x.name === cfg.default_agent : x.name === "build"), "desc"]),
+      sortBy(
+        [(x) => (cfg.default_agent ? x.name === cfg.default_agent : x.name === "build"), "desc"],
+        [(x) => x.name, "asc"],
+      ),
     )
   }
 
@@ -280,7 +285,7 @@ export namespace Agent {
     return primaryVisible.name
   }
 
-  export async function generate(input: { description: string; model?: { providerID: string; modelID: string } }) {
+  export async function generate(input: { description: string; model?: { providerID: ProviderID; modelID: ModelID } }) {
     const cfg = await Config.get()
     const defaultModel = input.model ?? (await Provider.defaultModel())
     const model = await Provider.getModel(defaultModel.providerID, defaultModel.modelID)
