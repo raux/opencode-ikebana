@@ -479,7 +479,7 @@ export const dict = {
   "session.revertDock.summary.other": "{{count}} cofnięte wiadomości",
   "session.revertDock.collapse": "Zwiń cofnięte wiadomości",
   "session.revertDock.expand": "Rozwiń cofnięte wiadomości",
-  "session.revertDock.restore": "Przywróć wiadomość",
+  "session.revertDock.restore": "Przywróć",
   "session.new.title": "Zbuduj cokolwiek",
   "session.new.worktree.main": "Główna gałąź",
   "session.new.worktree.mainWithBranch": "Główna gałąź ({{branch}})",

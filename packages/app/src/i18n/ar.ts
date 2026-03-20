@@ -477,7 +477,7 @@ export const dict = {
   "session.revertDock.summary.other": "{{count}} رسائل تم التراجع عنها",
   "session.revertDock.collapse": "طي الرسائل التي تم التراجع عنها",
   "session.revertDock.expand": "توسيع الرسائل التي تم التراجع عنها",
-  "session.revertDock.restore": "استعادة الرسالة",
+  "session.revertDock.restore": "استعادة",
   "session.new.title": "ابنِ أي شيء",
   "session.new.worktree.main": "الفرع الرئيسي",
   "session.new.worktree.mainWithBranch": "الفرع الرئيسي ({{branch}})",

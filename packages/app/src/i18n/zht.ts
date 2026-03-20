@@ -527,7 +527,7 @@ export const dict = {
   "session.revertDock.summary.other": "{{count}} 則已回復訊息",
   "session.revertDock.collapse": "收合已回復訊息",
   "session.revertDock.expand": "展開已回復訊息",
-  "session.revertDock.restore": "還原訊息",
+  "session.revertDock.restore": "還原",
 
   "session.new.title": "建構任何東西",
   "session.new.worktree.main": "主分支",

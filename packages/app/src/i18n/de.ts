@@ -489,7 +489,7 @@ export const dict = {
   "session.revertDock.summary.other": "{{count}} zurückgesetzte Nachrichten",
   "session.revertDock.collapse": "Zurückgesetzte Nachrichten einklappen",
   "session.revertDock.expand": "Zurückgesetzte Nachrichten ausklappen",
-  "session.revertDock.restore": "Nachricht wiederherstellen",
+  "session.revertDock.restore": "Wiederherstellen",
   "session.new.title": "Baue, was du willst",
   "session.new.worktree.main": "Haupt-Branch",
   "session.new.worktree.mainWithBranch": "Haupt-Branch ({{branch}})",

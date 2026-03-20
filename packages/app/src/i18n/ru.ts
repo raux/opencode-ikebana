@@ -534,7 +534,7 @@ export const dict = {
   "session.revertDock.summary.other": "{{count}} сообщений возвращено",
   "session.revertDock.collapse": "Свернуть возвращённые сообщения",
   "session.revertDock.expand": "Развернуть возвращённые сообщения",
-  "session.revertDock.restore": "Восстановить сообщение",
+  "session.revertDock.restore": "Восстановить",
 
   "session.new.title": "Создавайте что угодно",
   "session.new.worktree.main": "Основная ветка",

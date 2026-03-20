@@ -537,7 +537,7 @@ export const dict = {
   "session.revertDock.summary.other": "{{count}} mensajes revertidos",
   "session.revertDock.collapse": "Contraer mensajes revertidos",
   "session.revertDock.expand": "Expandir mensajes revertidos",
-  "session.revertDock.restore": "Restaurar mensaje",
+  "session.revertDock.restore": "Restaurar",
 
   "session.new.title": "Construye lo que quieras",
   "session.new.worktree.main": "Rama principal",

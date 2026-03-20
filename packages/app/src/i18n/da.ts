@@ -531,7 +531,7 @@ export const dict = {
   "session.revertDock.summary.other": "{{count}} tilbagerullede beskeder",
   "session.revertDock.collapse": "Skjul tilbagerullede beskeder",
   "session.revertDock.expand": "Udvid tilbagerullede beskeder",
-  "session.revertDock.restore": "Gendan besked",
+  "session.revertDock.restore": "Gendan",
 
   "session.new.title": "Byg hvad som helst",
   "session.new.worktree.main": "Hovedgren",

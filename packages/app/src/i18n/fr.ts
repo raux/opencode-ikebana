@@ -486,7 +486,7 @@ export const dict = {
   "session.revertDock.summary.other": "{{count}} messages annulés",
   "session.revertDock.collapse": "Réduire les messages annulés",
   "session.revertDock.expand": "Développer les messages annulés",
-  "session.revertDock.restore": "Restaurer le message",
+  "session.revertDock.restore": "Restaurer",
   "session.new.title": "Créez ce que vous voulez",
   "session.new.worktree.main": "Branche principale",
   "session.new.worktree.mainWithBranch": "Branche principale ({{branch}})",

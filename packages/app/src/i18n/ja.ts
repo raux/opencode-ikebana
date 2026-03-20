@@ -478,7 +478,7 @@ export const dict = {
   "session.revertDock.summary.other": "{{count}} 件のロールバックされたメッセージ",
   "session.revertDock.collapse": "ロールバックされたメッセージを折りたたむ",
   "session.revertDock.expand": "ロールバックされたメッセージを展開",
-  "session.revertDock.restore": "メッセージを復元",
+  "session.revertDock.restore": "復元",
   "session.new.title": "何でも作る",
   "session.new.worktree.main": "メインブランチ",
   "session.new.worktree.mainWithBranch": "メインブランチ ({{branch}})",

@@ -480,7 +480,7 @@ export const dict = {
   "session.revertDock.summary.other": "{{count}}개의 롤백된 메시지",
   "session.revertDock.collapse": "롤백된 메시지 접기",
   "session.revertDock.expand": "롤백된 메시지 펼치기",
-  "session.revertDock.restore": "메시지 복원",
+  "session.revertDock.restore": "복원",
   "session.new.title": "무엇이든 만들기",
   "session.new.worktree.main": "메인 브랜치",
   "session.new.worktree.mainWithBranch": "메인 브랜치 ({{branch}})",

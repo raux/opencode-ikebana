@@ -536,7 +536,7 @@ export const dict = {
   "session.revertDock.summary.other": "{{count}} vraćenih poruka",
   "session.revertDock.collapse": "Sažmi vraćene poruke",
   "session.revertDock.expand": "Proširi vraćene poruke",
-  "session.revertDock.restore": "Vrati poruku",
+  "session.revertDock.restore": "Vrati",
 
   "session.new.title": "Napravi bilo šta",
   "session.new.worktree.main": "Glavna grana",

@@ -541,7 +541,7 @@ export const dict = {
   "session.revertDock.summary.other": "{{count}} geri alınan mesaj",
   "session.revertDock.collapse": "Geri alınan mesajları daralt",
   "session.revertDock.expand": "Geri alınan mesajları genişlet",
-  "session.revertDock.restore": "Mesajı geri yükle",
+  "session.revertDock.restore": "Geri yükle",
 
   "session.new.title": "İstediğini yap",
   "session.new.worktree.main": "Ana dal",
