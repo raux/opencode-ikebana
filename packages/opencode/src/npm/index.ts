@@ -159,11 +159,11 @@ export namespace Npm {
         path.join(dir, "node_modules", pkg, "package.json"),
       ).catch(() => undefined)
       if (pkgJson?.bin) {
+        const unscoped = pkg.startsWith("@") ? pkg.split("/")[1] : pkg
         const bin = pkgJson.bin
-      if (typeof bin === "string") return unscoped
+        if (typeof bin === "string") return unscoped
         const keys = Object.keys(bin)
         if (keys.length === 1) return keys[0]
-        const unscoped = pkg.startsWith("@") ? pkg.split("/")[1] : pkg
         return bin[unscoped] ? unscoped : keys[0]
       }
       return files[0]
