@@ -92,7 +92,9 @@ export const oxfmt: Info = {
         devDependencies?: Record<string, string>
       }>(item)
       if (json.dependencies?.oxfmt || json.devDependencies?.oxfmt) {
-        return [await Npm.which("oxfmt"), "$FILE"]
+        const bin = await Npm.which("oxfmt")
+        if (!bin) return false
+        return [bin, "$FILE"]
       }
     }
     return false
@@ -134,7 +136,9 @@ export const biome: Info = {
     for (const config of configs) {
       const found = await Filesystem.findUp(config, Instance.directory, Instance.worktree)
       if (found.length > 0) {
-        return [await Npm.which("@biomejs/biome"), "check", "--write", "$FILE"]
+        const bin = await Npm.which("@biomejs/biome")
+        if (!bin) return false
+        return [bin, "check", "--write", "$FILE"]
       }
     }
     return false

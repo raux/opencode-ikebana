@@ -103,7 +103,9 @@ export namespace LSPServer {
       const tsserver = Module.resolve("typescript/lib/tsserver.js", Instance.directory)
       log.info("typescript server", { tsserver })
       if (!tsserver) return
-      const proc = spawn(await Npm.which("typescript-language-server"), ["--stdio"], {
+      const bin = await Npm.which("typescript-language-server")
+      if (!bin) return
+      const proc = spawn(bin, ["--stdio"], {
         cwd: root,
         env: {
           ...process.env,
@@ -129,7 +131,9 @@ export namespace LSPServer {
       const args: string[] = []
       if (!binary) {
         if (Flag.OPENCODE_DISABLE_LSP_DOWNLOAD) return
-        binary = await Npm.which("@vue/language-server")
+        const resolved = await Npm.which("@vue/language-server")
+        if (!resolved) return
+        binary = resolved
       }
       args.push("--stdio")
       const proc = spawn(binary, args, {
@@ -322,6 +326,7 @@ export namespace LSPServer {
         const resolved = Module.resolve("biome", root)
         if (!resolved) return
         bin = await Npm.which("biome")
+        if (!bin) return
         args = ["lsp-proxy", "--stdio"]
       }
 
@@ -488,7 +493,9 @@ export namespace LSPServer {
       const args = []
       if (!binary) {
         if (Flag.OPENCODE_DISABLE_LSP_DOWNLOAD) return
-        binary = await Npm.which("pyright")
+        const resolved = await Npm.which("pyright")
+        if (!resolved) return
+        binary = resolved
       }
       args.push("--stdio")
 
@@ -1003,7 +1010,9 @@ export namespace LSPServer {
       const args: string[] = []
       if (!binary) {
         if (Flag.OPENCODE_DISABLE_LSP_DOWNLOAD) return
-        binary = await Npm.which("svelte-language-server")
+        const resolved = await Npm.which("svelte-language-server")
+        if (!resolved) return
+        binary = resolved
       }
       args.push("--stdio")
       const proc = spawn(binary, args, {
@@ -1035,7 +1044,9 @@ export namespace LSPServer {
       const args: string[] = []
       if (!binary) {
         if (Flag.OPENCODE_DISABLE_LSP_DOWNLOAD) return
-        binary = await Npm.which("@astrojs/language-server")
+        const resolved = await Npm.which("@astrojs/language-server")
+        if (!resolved) return
+        binary = resolved
       }
       args.push("--stdio")
       const proc = spawn(binary, args, {
@@ -1284,7 +1295,9 @@ export namespace LSPServer {
       const args: string[] = []
       if (!binary) {
         if (Flag.OPENCODE_DISABLE_LSP_DOWNLOAD) return
-        binary = await Npm.which("yaml-language-server")
+        const resolved = await Npm.which("yaml-language-server")
+        if (!resolved) return
+        binary = resolved
       }
       args.push("--stdio")
       const proc = spawn(binary, args, {
@@ -1449,7 +1462,9 @@ export namespace LSPServer {
       const args: string[] = []
       if (!binary) {
         if (Flag.OPENCODE_DISABLE_LSP_DOWNLOAD) return
-        binary = await Npm.which("intelephense")
+        const resolved = await Npm.which("intelephense")
+        if (!resolved) return
+        binary = resolved
       }
       args.push("--stdio")
       const proc = spawn(binary, args, {
@@ -1531,7 +1546,9 @@ export namespace LSPServer {
       const args: string[] = []
       if (!binary) {
         if (Flag.OPENCODE_DISABLE_LSP_DOWNLOAD) return
-        binary = await Npm.which("bash-language-server")
+        const resolved = await Npm.which("bash-language-server")
+        if (!resolved) return
+        binary = resolved
       }
       args.push("start")
       const proc = spawn(binary, args, {
@@ -1724,7 +1741,9 @@ export namespace LSPServer {
       const args: string[] = []
       if (!binary) {
         if (Flag.OPENCODE_DISABLE_LSP_DOWNLOAD) return
-        binary = await Npm.which("dockerfile-language-server-nodejs")
+        const resolved = await Npm.which("dockerfile-language-server-nodejs")
+        if (!resolved) return
+        binary = resolved
       }
       args.push("--stdio")
       const proc = spawn(binary, args, {

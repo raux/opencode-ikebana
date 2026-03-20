@@ -175,7 +175,7 @@ export namespace Npm {
     await rm(path.join(dir, "package-lock.json"), { force: true })
     await add(pkg)
     const resolved = await pick()
-    if (!resolved) throw new Error(`No binary found for package "${pkg}" after install`)
+    if (!resolved) return
     return path.join(binDir, resolved)
   }
 }
