@@ -129,7 +129,7 @@ Still open and likely worth migrating:
 - [ ] `Plugin`
 - [ ] `ToolRegistry`
 - [ ] `Pty`
-- [ ] `Worktree`
+- [x] `Worktree`
 - [ ] `Installation`
 - [ ] `Bus`
 - [ ] `Command`
