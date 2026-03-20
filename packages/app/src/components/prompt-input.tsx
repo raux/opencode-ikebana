@@ -52,7 +52,6 @@ import {
 import { createPromptSubmit, type FollowupDraft } from "./prompt-input/submit"
 import { PromptPopover, type AtOption, type SlashCommand } from "./prompt-input/slash-popover"
 import { PromptContextItems } from "./prompt-input/context-items"
-import { PromptImageAttachments } from "./prompt-input/image-attachments"
 import { PromptDragOverlay } from "./prompt-input/drag-overlay"
 import { promptPlaceholder } from "./prompt-input/placeholder"
 import { ImagePreview } from "@opencode-ai/ui/image-preview"
@@ -1291,6 +1290,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
         />
         <PromptContextItems
           items={contextItems()}
+          images={imageAttachments()}
           active={(item) => {
             const active = comments.active()
             return !!item.commentID && item.commentID === active?.id && item.path === active?.file
@@ -1300,15 +1300,12 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
             if (item.commentID) comments.remove(item.path, item.commentID)
             prompt.context.remove(item.key)
           }}
-          t={(key) => language.t(key as Parameters<typeof language.t>[0])}
-        />
-        <PromptImageAttachments
-          attachments={imageAttachments()}
-          onOpen={(attachment) =>
+          openImage={(attachment) =>
             dialog.show(() => <ImagePreview src={attachment.dataUrl} alt={attachment.filename} />)
           }
-          onRemove={removeAttachment}
-          removeLabel={language.t("prompt.attachment.remove")}
+          removeImage={removeAttachment}
+          imageRemoveLabel={language.t("prompt.attachment.remove")}
+          t={(key) => language.t(key as Parameters<typeof language.t>[0])}
         />
         <div
           class="relative"
