@@ -37,7 +37,7 @@ export namespace Format {
     Effect.gen(function* () {
       const instance = yield* InstanceContext
 
-      const enabled: Record<string, string[] | false> = {}
+      const enabled: Record<string, boolean> = {}
       const formatters: Record<string, Formatter.Info> = {}
 
       const cfg = yield* Effect.promise(() => Config.get())
@@ -62,7 +62,7 @@ export namespace Format {
           formatters[name] = {
             ...info,
             name,
-            enabled: async () => info.command,
+            enabled: async () => true,
           }
         }
       } else {
@@ -79,22 +79,13 @@ export namespace Format {
       }
 
       async function getFormatter(ext: string) {
-        const result: Array<{
-          name: string
-          command: string[]
-          environment?: Record<string, string>
-        }> = []
+        const result = []
         for (const item of Object.values(formatters)) {
           log.info("checking", { name: item.name, ext })
           if (!item.extensions.includes(ext)) continue
-          const cmd = await isEnabled(item)
-          if (!cmd) continue
+          if (!(await isEnabled(item))) continue
           log.info("enabled", { name: item.name, ext })
-          result.push({
-            name: item.name,
-            command: cmd,
-            environment: item.environment,
-          })
+          result.push(item)
         }
         return result
       }
@@ -150,7 +141,7 @@ export namespace Format {
           result.push({
             name: formatter.name,
             extensions: formatter.extensions,
-            enabled: !!isOn,
+            enabled: isOn,
           })
         }
         return result
