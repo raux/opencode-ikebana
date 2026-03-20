@@ -56,7 +56,7 @@ export namespace Npm {
   }
 
   export async function add(pkg: string) {
-    using _ = await Lock.write("npm-install")
+    using _ = await Lock.write(`npm-install:${pkg}`)
     log.info("installing package", {
       pkg,
     })
