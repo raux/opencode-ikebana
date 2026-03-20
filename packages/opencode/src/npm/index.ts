@@ -16,7 +16,7 @@ import { Global } from "../global"
 import { Lock } from "../util/lock"
 import { Log } from "../util/log"
 import path from "path"
-import { readdir } from "fs/promises"
+import { readdir, rm } from "fs/promises"
 import { Filesystem } from "@/util/filesystem"
 
 const { Arborist } = await import("@npmcli/arborist")
@@ -172,6 +172,7 @@ export namespace Npm {
     const bin = await pick()
     if (bin) return path.join(binDir, bin)
 
+    await rm(path.join(dir, "package-lock.json"), { force: true })
     await add(pkg)
     const resolved = await pick()
     if (!resolved) throw new Error(`No binary found for package "${pkg}" after install`)
