@@ -2,7 +2,6 @@ import { For, createEffect, createMemo, on, onCleanup, Show, Index, type JSX } f
 import { createStore, produce } from "solid-js/store"
 import { useNavigate } from "@solidjs/router"
 import { Button } from "@opencode-ai/ui/button"
-import { FileIcon } from "@opencode-ai/ui/file-icon"
 import { Icon } from "@opencode-ai/ui/icon"
 import { IconButton } from "@opencode-ai/ui/icon-button"
 import { DropdownMenu } from "@opencode-ai/ui/dropdown-menu"
@@ -15,7 +14,7 @@ import { TextField } from "@opencode-ai/ui/text-field"
 import type { AssistantMessage, Message as MessageType, Part, TextPart, UserMessage } from "@opencode-ai/sdk/v2"
 import { showToast } from "@opencode-ai/ui/toast"
 import { Binary } from "@opencode-ai/util/binary"
-import { getFilename } from "@opencode-ai/util/path"
+import { getFilenameTruncated } from "@opencode-ai/util/path"
 import { Popover as KobaltePopover } from "@kobalte/core/popover"
 import { shouldMarkBoundaryGesture, normalizeWheelDelta } from "@/pages/session/message-gesture"
 import { SessionContextUsage } from "@/components/session-context-usage"
@@ -29,6 +28,7 @@ import { useSDK } from "@/context/sdk"
 import { useSync } from "@/context/sync"
 import { messageAgentColor } from "@/utils/agent"
 import { parseCommentNote, readCommentMetadata } from "@/utils/comment-note"
+import { CommentChip } from "@/components/comment-chip"
 
 type MessageComment = {
   path: string
@@ -960,40 +960,36 @@ export function MessageTimeline(props: {
                     >
                       <Show when={commentCount() > 0}>
                         <div class="w-full px-4 md:px-5 pb-2">
-                          <div class="ml-auto max-w-[82%] overflow-x-auto no-scrollbar">
-                            <div class="flex w-max min-w-full justify-end gap-2">
-                              <Index each={comments()}>
-                                {(commentAccessor: () => MessageComment) => {
-                                  const comment = createMemo(() => commentAccessor())
-                                  return (
-                                    <Show when={comment()}>
-                                      {(c) => (
-                                        <div class="shrink-0 max-w-[260px] rounded-[6px] border border-border-weak-base bg-background-stronger px-2.5 py-2">
-                                          <div class="flex items-center gap-1.5 min-w-0 text-11-medium text-text-strong">
-                                            <FileIcon
-                                              node={{ path: c().path, type: "file" }}
-                                              class="size-3.5 shrink-0"
-                                            />
-                                            <span class="truncate">{getFilename(c().path)}</span>
-                                            <Show when={c().selection}>
-                                              {(selection) => (
-                                                <span class="shrink-0 text-text-weak">
-                                                  {selection().startLine === selection().endLine
-                                                    ? `:${selection().startLine}`
-                                                    : `:${selection().startLine}-${selection().endLine}`}
-                                                </span>
-                                              )}
-                                            </Show>
-                                          </div>
-                                          <div class="pt-1 text-12-regular text-text-strong whitespace-pre-wrap break-words">
-                                            {c().comment}
-                                          </div>
-                                        </div>
-                                      )}
-                                    </Show>
-                                  )
-                                }}
-                              </Index>
+                          <div class="w-full overflow-visible">
+                            <div class="overflow-x-auto no-scrollbar">
+                              <div class="flex w-max min-w-full justify-end gap-2">
+                                <Index each={comments()}>
+                                  {(commentAccessor: () => MessageComment) => {
+                                    const comment = createMemo(() => commentAccessor())
+                                    return (
+                                      <Show when={comment()}>
+                                        {(c) => (
+                                          <CommentChip
+                                            variant="full"
+                                            path={c().path}
+                                            label={getFilenameTruncated(c().path, 14)}
+                                            selection={
+                                              c().selection
+                                                ? {
+                                                    start: c().selection!.startLine,
+                                                    end: c().selection!.endLine,
+                                                  }
+                                                : undefined
+                                            }
+                                            comment={c().comment}
+                                            class="max-w-[260px]"
+                                          />
+                                        )}
+                                      </Show>
+                                    )
+                                  }}
+                                </Index>
+                              </div>
                             </div>
                           </div>
                         </div>

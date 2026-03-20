@@ -1,10 +1,9 @@
 import { Component, For, Show, createMemo } from "solid-js"
-import { FileIcon } from "@opencode-ai/ui/file-icon"
-import { Icon } from "@opencode-ai/ui/icon"
 import { Tooltip } from "@opencode-ai/ui/tooltip"
 import { getDirectory, getFilename, getFilenameTruncated } from "@opencode-ai/util/path"
 import type { ContextItem, ImageAttachmentPart } from "@/context/prompt"
 import { PromptImageAttachment } from "./image-attachments"
+import { CommentChip } from "@/components/comment-chip"
 
 type PromptContextItem = ContextItem & { key: string }
 
@@ -73,46 +72,24 @@ export const PromptContextItems: Component<ContextItemsProps> = (props) => {
                 openDelay={2000}
                 class="shrink-0"
               >
-                <div
-                  class="group relative flex flex-col rounded-[6px] pl-2 pr-7 py-1 max-w-[200px] h-12 cursor-default shadow-xs-border bg-background-stronger"
-                  onClick={() => props.openComment(row.item)}
-                >
-                  <div class="flex items-center gap-1.5">
-                    <FileIcon node={{ path: row.item.path, type: "file" }} class="shrink-0 size-3.5" />
-                    <div class="flex items-center text-11-regular min-w-0 font-medium">
-                      <span class="text-text-strong whitespace-nowrap">{label}</span>
-                      <Show when={row.item.selection}>
-                        {(sel) => (
-                          <span class="text-text-weak whitespace-nowrap shrink-0">
-                            {sel().startLine === sel().endLine
-                              ? `:${sel().startLine}`
-                              : `:${sel().startLine}-${sel().endLine}`}
-                          </span>
-                        )}
-                      </Show>
-                    </div>
-                  </div>
-                  <Show when={row.item.comment}>
-                    {(comment) => <div class="text-base text-text-strong ml-5 truncate">{comment()}</div>}
-                  </Show>
-                  <button
-                    type="button"
-                    class="absolute top-0 right-0 size-6 opacity-0 pointer-events-none transition-opacity group/remove group-hover:opacity-100 group-hover:pointer-events-auto group-focus-within:opacity-100 group-focus-within:pointer-events-auto"
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      props.remove(row.item)
-                    }}
-                    aria-label={props.t("prompt.context.removeFile")}
-                  >
-                    <span class="absolute top-1 right-1 size-3.5 rounded-[var(--radius-sm)] flex items-center justify-center bg-transparent group-hover/remove:bg-surface-base-hover group-active/remove:bg-surface-base-active">
-                      <Icon
-                        name="close-small"
-                        size="small"
-                        class="text-text-weak group-hover/remove:text-text-strong"
-                      />
-                    </span>
-                  </button>
-                </div>
+                <CommentChip
+                  variant="preview"
+                  path={row.item.path}
+                  label={label}
+                  selection={
+                    row.item.selection
+                      ? {
+                          start: row.item.selection.startLine,
+                          end: row.item.selection.endLine,
+                        }
+                      : undefined
+                  }
+                  comment={row.item.comment}
+                  class="max-w-[200px]"
+                  onOpen={() => props.openComment(row.item)}
+                  onRemove={() => props.remove(row.item)}
+                  removeLabel={props.t("prompt.context.removeFile")}
+                />
               </Tooltip>
             )
           }}
