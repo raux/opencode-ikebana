@@ -1,7 +1,7 @@
 {
   "$schema": "https://json.schemastore.org/package.json",
   "name": "opencode",
-  "description": "AI-powered development tool",
+  "description": "AI-powered coding assistant that generates perfect code most of the time",
   "private": true,
   "type": "module",
   "packageManager": "bun@1.3.10",

@@ -93,9 +93,6 @@ export function Header() {
         paddingBottom={1}
         paddingLeft={2}
         paddingRight={1}
-        {...SplitBorder}
-        border={["left"]}
-        borderColor={theme.border}
         flexShrink={0}
         backgroundColor={theme.backgroundPanel}
       >

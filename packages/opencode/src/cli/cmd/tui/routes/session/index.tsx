@@ -1046,7 +1046,7 @@ export function Session() {
       }}
     >
       <box flexDirection="row">
-        <box flexGrow={1} paddingBottom={1} paddingTop={1} paddingLeft={2} paddingRight={2} gap={1}>
+        <box flexGrow={1} gap={1}>
           <Show when={session()}>
             <Show when={showHeader() && (!sidebarVisible() || !wide())}>
               <Header />
@@ -1251,13 +1251,7 @@ function UserMessage(props: {
   return (
     <>
       <Show when={text()}>
-        <box
-          id={props.message.id}
-          border={["left"]}
-          borderColor={color()}
-          customBorderChars={SplitBorder.customBorderChars}
-          marginTop={props.index === 0 ? 0 : 1}
-        >
+        <box id={props.message.id} marginTop={props.index === 0 ? 0 : 1}>
           <box
             onMouseOver={() => {
               setHover(true)
@@ -1362,7 +1356,7 @@ function AssistantMessage(props: { message: AssistantMessage; parts: Part[]; las
         }}
       </For>
       <Show when={props.parts.some((x) => x.type === "tool" && x.tool === "task")}>
-        <box paddingTop={1} paddingLeft={3}>
+        <box paddingTop={1} paddingLeft={2}>
           <text fg={theme.text}>
             {keybind.print("session_child_first")}
             <span style={{ fg: theme.textMuted }}> view subagents</span>
@@ -1385,7 +1379,7 @@ function AssistantMessage(props: { message: AssistantMessage; parts: Part[]; las
       </Show>
       <Switch>
         <Match when={props.last || final() || props.message.error?.name === "MessageAbortedError"}>
-          <box paddingLeft={3}>
+          <box paddingLeft={2}>
             <text marginTop={1}>
               <span
                 style={{
@@ -1457,7 +1451,7 @@ function TextPart(props: { last: boolean; part: TextPart; message: AssistantMess
   const { theme, syntax } = useTheme()
   return (
     <Show when={props.part.text.trim()}>
-      <box id={"text-" + props.part.id} paddingLeft={3} marginTop={1} flexShrink={0}>
+      <box id={"text-" + props.part.id} paddingLeft={2} marginTop={1} flexShrink={0}>
         <Switch>
           <Match when={Flag.OPENCODE_EXPERIMENTAL_MARKDOWN}>
             <markdown
@@ -1625,7 +1619,7 @@ function GenericTool(props: ToolProps<any>) {
 function ToolTitle(props: { fallback: string; when: any; icon: string; children: JSX.Element }) {
   const { theme } = useTheme()
   return (
-    <text paddingLeft={3} fg={props.when ? theme.textMuted : theme.text}>
+    <text paddingLeft={2} fg={props.when ? theme.textMuted : theme.text}>
       <Show fallback={<>~ {props.fallback}</>} when={props.when}>
         <span style={{ bold: true }}>{props.icon}</span> {props.children}
       </Show>
@@ -1676,7 +1670,7 @@ function InlineTool(props: {
   return (
     <box
       marginTop={margin()}
-      paddingLeft={3}
+      paddingLeft={2}
       onMouseOver={() => props.onClick && setHover(true)}
       onMouseOut={() => setHover(false)}
       onMouseUp={() => {
@@ -1711,7 +1705,7 @@ function InlineTool(props: {
           <Spinner color={fg()} children={props.children} />
         </Match>
         <Match when={true}>
-          <text paddingLeft={3} fg={fg()} attributes={denied() ? TextAttributes.STRIKETHROUGH : undefined}>
+          <text paddingLeft={2} fg={fg()} attributes={denied() ? TextAttributes.STRIKETHROUGH : undefined}>
             <Show fallback={<>~ {props.pending}</>} when={props.complete}>
               <span style={{ fg: props.iconColor }}>{props.icon}</span> {props.children}
             </Show>
@@ -1738,15 +1732,12 @@ function BlockTool(props: {
   const error = createMemo(() => (props.part?.state.status === "error" ? props.part.state.error : undefined))
   return (
     <box
-      border={["left"]}
       paddingTop={1}
       paddingBottom={1}
       paddingLeft={2}
       marginTop={1}
       gap={1}
-      backgroundColor={hover() ? theme.backgroundMenu : theme.backgroundPanel}
-      customBorderChars={SplitBorder.customBorderChars}
-      borderColor={theme.background}
+      backgroundColor={hover() ? theme.backgroundMenu : undefined}
       onMouseOver={() => props.onClick && setHover(true)}
       onMouseOut={() => setHover(false)}
       onMouseUp={() => {
@@ -1757,7 +1748,7 @@ function BlockTool(props: {
       <Show
         when={props.spinner}
         fallback={
-          <text paddingLeft={3} fg={theme.textMuted}>
+          <text paddingLeft={2} fg={theme.textMuted}>
             {props.title}
           </text>
         }
@@ -1905,8 +1896,8 @@ function Read(props: ToolProps<typeof ReadTool>) {
       </InlineTool>
       <For each={loaded()}>
         {(filepath) => (
-          <box paddingLeft={3}>
-            <text paddingLeft={3} fg={theme.textMuted}>
+          <box paddingLeft={2}>
+            <text paddingLeft={2} fg={theme.textMuted}>
               ↳ Loaded {normalizePath(filepath)}
             </text>
           </box>
@@ -2056,7 +2047,7 @@ function Edit(props: ToolProps<typeof EditTool>) {
     <Switch>
       <Match when={props.metadata.diff !== undefined}>
         <BlockTool title={"← Edit " + normalizePath(props.input.filePath!)} part={props.part}>
-          <box paddingLeft={1}>
+          <box>
             <diff
               diff={diffContent()}
               view={view()}
@@ -2066,6 +2057,7 @@ function Edit(props: ToolProps<typeof EditTool>) {
               width="100%"
               wrapMode={ctx.diffWrapMode()}
               fg={theme.text}
+              bg={theme.background}
               addedBg={theme.diffAddedBg}
               removedBg={theme.diffRemovedBg}
               contextBg={theme.diffContextBg}
