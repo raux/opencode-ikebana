@@ -310,9 +310,9 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   })
 
   const hasUserPrompt = createMemo(() => {
-    const id = params.id
-    if (!id) return false
-    const messages = sync.data.message[id]
+    const sessionID = params.id
+    if (!sessionID) return false
+    const messages = sync.data.message[sessionID]
     if (!messages) return false
     return messages.some((m) => m.role === "user")
   })

@@ -6,7 +6,7 @@ import { useSessionLayout } from "./session-layout"
 
 export const useSessionHashScroll = (input: {
   sessionKey: () => string
-  sessionID: () => string | undefined
+
   messagesReady: () => boolean
   visibleUserMessages: () => UserMessage[]
   turnStart: () => number

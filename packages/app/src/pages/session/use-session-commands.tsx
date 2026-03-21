@@ -126,8 +126,8 @@ export const useSessionCommands = (actions: SessionCommandContext) => {
   const permissionsCommand = withCategory(language.t("command.category.permissions"))
 
   const isAutoAcceptActive = () => {
-    const id = params.id
-    if (id) return permission.isAutoAccepting(id, sdk.directory)
+    const sessionID = params.id
+    if (sessionID) return permission.isAutoAccepting(sessionID, sdk.directory)
     return permission.isAutoAcceptingDirectory(sdk.directory)
   }
   command.register("session", () => {
@@ -146,8 +146,7 @@ export const useSessionCommands = (actions: SessionCommandContext) => {
               slash: "share",
               disabled: !params.id,
               onSelect: async () => {
-                const id = params.id
-                if (!id) return
+                if (!params.id) return
 
                 const write = (value: string) => {
                   const body = typeof document === "undefined" ? undefined : document.body
@@ -199,7 +198,7 @@ export const useSessionCommands = (actions: SessionCommandContext) => {
                 }
 
                 const url = await sdk.client.session
-                  .share({ sessionID: id })
+                  .share({ sessionID: params.id })
                   .then((res) => res.data?.share?.url)
                   .catch(() => undefined)
                 if (!url) {
@@ -391,12 +390,12 @@ export const useSessionCommands = (actions: SessionCommandContext) => {
         keybind: "mod+shift+a",
         disabled: false,
         onSelect: () => {
-          const id = params.id
-          if (id) permission.toggleAutoAccept(id, sdk.directory)
+          const sessionID = params.id
+          if (sessionID) permission.toggleAutoAccept(sessionID, sdk.directory)
           else permission.toggleAutoAcceptDirectory(sdk.directory)
 
-          const active = id
-            ? permission.isAutoAccepting(id, sdk.directory)
+          const active = sessionID
+            ? permission.isAutoAccepting(sessionID, sdk.directory)
             : permission.isAutoAcceptingDirectory(sdk.directory)
           showToast({
             title: active
@@ -415,16 +414,16 @@ export const useSessionCommands = (actions: SessionCommandContext) => {
         slash: "undo",
         disabled: !params.id || visibleUserMessages().length === 0,
         onSelect: async () => {
-          const id = params.id
-          if (!id) return
+          const sessionID = params.id
+          if (!sessionID) return
           if (status().type !== "idle") {
-            await sdk.client.session.abort({ sessionID: id }).catch(() => {})
+            await sdk.client.session.abort({ sessionID }).catch(() => {})
           }
           const revert = info()?.revert?.messageID
           const message = findLast(userMessages(), (x) => !revert || x.id < revert)
           if (!message) return
           await sdk.client.session.revert({
-            sessionID: id,
+            sessionID,
             messageID: message.id,
           })
           const parts = sync.data.part[message.id]
@@ -445,20 +444,20 @@ export const useSessionCommands = (actions: SessionCommandContext) => {
         slash: "redo",
         disabled: !params.id || !info()?.revert?.messageID,
         onSelect: async () => {
-          const id = params.id
-          if (!id) return
+          const sessionID = params.id
+          if (!sessionID) return
           const revertMessageID = info()?.revert?.messageID
           if (!revertMessageID) return
           const nextMessage = userMessages().find((x) => x.id > revertMessageID)
           if (!nextMessage) {
-            await sdk.client.session.unrevert({ sessionID: id })
+            await sdk.client.session.unrevert({ sessionID })
             prompt.reset()
             const lastMsg = findLast(userMessages(), (x) => x.id >= revertMessageID)
             setActiveMessage(lastMsg)
             return
           }
           await sdk.client.session.revert({
-            sessionID: id,
+            sessionID,
             messageID: nextMessage.id,
           })
           const priorMsg = findLast(userMessages(), (x) => x.id < nextMessage.id)
@@ -472,8 +471,8 @@ export const useSessionCommands = (actions: SessionCommandContext) => {
         slash: "compact",
         disabled: !params.id || visibleUserMessages().length === 0,
         onSelect: async () => {
-          const id = params.id
-          if (!id) return
+          const sessionID = params.id
+          if (!sessionID) return
           const model = local.model.current()
           if (!model) {
             showToast({
@@ -483,7 +482,7 @@ export const useSessionCommands = (actions: SessionCommandContext) => {
             return
           }
           await sdk.client.session.summarize({
-            sessionID: id,
+            sessionID,
             modelID: model.id,
             providerID: model.provider.id,
           })
