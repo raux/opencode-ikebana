@@ -2,7 +2,7 @@ import { BusEvent } from "@/bus/bus-event"
 import { InstanceState } from "@/effect/instance-state"
 import { makeRunPromise } from "@/effect/run-service"
 import { SessionID, MessageID } from "@/session/schema"
-import { Effect, Layer, ServiceMap } from "effect"
+import { Effect, Fiber, Layer, ServiceMap } from "effect"
 import z from "zod"
 import { Config } from "../config/config"
 import { MCP } from "../mcp"
@@ -16,7 +16,7 @@ export namespace Command {
 
   type State = {
     commands: Record<string, Info>
-    ensure: () => Promise<void>
+    load: Fiber.Fiber<void, never>
   }
 
   export const Event = {
@@ -79,109 +79,104 @@ export namespace Command {
       const cache = yield* InstanceState.make<State>(
         Effect.fn("Command.state")(function* (ctx) {
           const commands: Record<string, Info> = {}
-          let task: Promise<void> | undefined
+          const load = yield* Effect.fn("Command.load")(function* () {
+            yield* Effect.promise(async () => {
+              const cfg = await Config.get()
 
-          async function load() {
-            const cfg = await Config.get()
-
-            commands[Default.INIT] = {
-              name: Default.INIT,
-              description: "create/update AGENTS.md",
-              source: "command",
-              get template() {
-                return PROMPT_INITIALIZE.replace("${path}", ctx.worktree)
-              },
-              hints: hints(PROMPT_INITIALIZE),
-            }
-            commands[Default.REVIEW] = {
-              name: Default.REVIEW,
-              description: "review changes [commit|branch|pr], defaults to uncommitted",
-              source: "command",
-              get template() {
-                return PROMPT_REVIEW.replace("${path}", ctx.worktree)
-              },
-              subtask: true,
-              hints: hints(PROMPT_REVIEW),
-            }
-
-            for (const [name, command] of Object.entries(cfg.command ?? {})) {
-              commands[name] = {
-                name,
-                agent: command.agent,
-                model: command.model,
-                description: command.description,
+              commands[Default.INIT] = {
+                name: Default.INIT,
+                description: "create/update AGENTS.md",
                 source: "command",
                 get template() {
-                  return command.template
+                  return PROMPT_INITIALIZE.replace("${path}", ctx.worktree)
                 },
-                subtask: command.subtask,
-                hints: hints(command.template),
+                hints: hints(PROMPT_INITIALIZE),
               }
-            }
-
-            for (const [name, prompt] of Object.entries(await MCP.prompts())) {
-              commands[name] = {
-                name,
-                source: "mcp",
-                description: prompt.description,
+              commands[Default.REVIEW] = {
+                name: Default.REVIEW,
+                description: "review changes [commit|branch|pr], defaults to uncommitted",
+                source: "command",
                 get template() {
-                  return new Promise<string>(async (resolve, reject) => {
-                    const template = await MCP.getPrompt(
-                      prompt.client,
-                      prompt.name,
-                      prompt.arguments
-                        ? Object.fromEntries(prompt.arguments.map((argument, i) => [argument.name, `$${i + 1}`]))
-                        : {},
-                    ).catch(reject)
-                    resolve(
-                      template?.messages
-                        .map((message) => (message.content.type === "text" ? message.content.text : ""))
-                        .join("\n") || "",
-                    )
-                  })
+                  return PROMPT_REVIEW.replace("${path}", ctx.worktree)
                 },
-                hints: prompt.arguments?.map((_, i) => `$${i + 1}`) ?? [],
+                subtask: true,
+                hints: hints(PROMPT_REVIEW),
               }
-            }
 
-            for (const skill of await Skill.all()) {
-              if (commands[skill.name]) continue
-              commands[skill.name] = {
-                name: skill.name,
-                description: skill.description,
-                source: "skill",
-                get template() {
-                  return skill.content
-                },
-                hints: [],
+              for (const [name, command] of Object.entries(cfg.command ?? {})) {
+                commands[name] = {
+                  name,
+                  agent: command.agent,
+                  model: command.model,
+                  description: command.description,
+                  source: "command",
+                  get template() {
+                    return command.template
+                  },
+                  subtask: command.subtask,
+                  hints: hints(command.template),
+                }
               }
-            }
-          }
+
+              for (const [name, prompt] of Object.entries(await MCP.prompts())) {
+                commands[name] = {
+                  name,
+                  source: "mcp",
+                  description: prompt.description,
+                  get template() {
+                    return new Promise<string>(async (resolve, reject) => {
+                      const template = await MCP.getPrompt(
+                        prompt.client,
+                        prompt.name,
+                        prompt.arguments
+                          ? Object.fromEntries(prompt.arguments.map((argument, i) => [argument.name, `$${i + 1}`]))
+                          : {},
+                      ).catch(reject)
+                      resolve(
+                        template?.messages
+                          .map((message) => (message.content.type === "text" ? message.content.text : ""))
+                          .join("\n") || "",
+                      )
+                    })
+                  },
+                  hints: prompt.arguments?.map((_, i) => `$${i + 1}`) ?? [],
+                }
+              }
+
+              for (const skill of await Skill.all()) {
+                if (commands[skill.name]) continue
+                commands[skill.name] = {
+                  name: skill.name,
+                  description: skill.description,
+                  source: "skill",
+                  get template() {
+                    return skill.content
+                  },
+                  hints: [],
+                }
+              }
+            })
+          })().pipe(
+            Effect.catchCause((cause) => Effect.sync(() => log.error("init failed", { cause }))),
+            Effect.forkScoped,
+          )
 
           return {
             commands,
-            ensure: () => {
-              task ??= Effect.runPromise(
-                Effect.tryPromise({
-                  try: load,
-                  catch: (cause) => cause,
-                }).pipe(Effect.catchCause((cause) => Effect.sync(() => log.error("init failed", { cause })))),
-              )
-              return task
-            },
+            load,
           }
         }),
       )
 
       const get = Effect.fn("Command.get")(function* (name: string) {
         const state = yield* InstanceState.get(cache)
-        yield* Effect.promise(() => state.ensure())
+        yield* Fiber.join(state.load)
         return state.commands[name]
       })
 
       const list = Effect.fn("Command.list")(function* () {
         const state = yield* InstanceState.get(cache)
-        yield* Effect.promise(() => state.ensure())
+        yield* Fiber.join(state.load)
         return Object.values(state.commands)
       })
 
