@@ -62,7 +62,7 @@ export namespace Server {
         log.error("failed", {
           error: err,
           message: msg,
-          stack,
+          stack: stack ? JSON.stringify(stack) : undefined,
           named,
         })
         if (err instanceof NamedError) {
