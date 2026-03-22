@@ -1336,6 +1336,7 @@ function AssistantMessage(props: { message: AssistantMessage; parts: Part[]; las
   const messages = createMemo(() => sync.data.message[props.message.sessionID] ?? [])
 
   const final = createMemo(() => {
+    if (props.message.error) return true
     return props.message.finish && !["tool-calls", "unknown"].includes(props.message.finish)
   })
 
@@ -1346,6 +1347,8 @@ function AssistantMessage(props: { message: AssistantMessage; parts: Part[]; las
     if (!user || !user.time) return 0
     return props.message.time.completed - user.time.created
   })
+
+  const interrupted = createMemo(() => props.message.error?.name === "MessageAbortedError")
 
   const keybind = useKeybind()
 
@@ -1374,7 +1377,7 @@ function AssistantMessage(props: { message: AssistantMessage; parts: Part[]; las
           </text>
         </box>
       </Show>
-      <Show when={props.message.error && props.message.error.name !== "MessageAbortedError"}>
+      <Show when={props.message.error && !interrupted()}>
         <box
           border={["left"]}
           paddingTop={1}
@@ -1389,28 +1392,26 @@ function AssistantMessage(props: { message: AssistantMessage; parts: Part[]; las
         </box>
       </Show>
       <Switch>
-        <Match when={props.last || final() || props.message.error?.name === "MessageAbortedError"}>
-          <box paddingLeft={2}>
-            <text marginTop={1}>
-              <span
-                style={{
-                  fg:
-                    props.message.error?.name === "MessageAbortedError"
-                      ? theme.textMuted
-                      : local.agent.color(props.message.agent),
-                }}
-              >
-                ▣{" "}
-              </span>{" "}
-              <span style={{ fg: theme.text }}>{Locale.titlecase(props.message.mode)}</span>
-              <span style={{ fg: theme.textMuted }}> · {props.message.modelID}</span>
-              <Show when={duration()}>
-                <span style={{ fg: theme.textMuted }}> · {Locale.duration(duration())}</span>
-              </Show>
-              <Show when={props.message.error?.name === "MessageAbortedError"}>
-                <span style={{ fg: theme.textMuted }}> · interrupted</span>
-              </Show>
-            </text>
+        <Match when={props.last || final()}>
+          <box paddingLeft={2} marginTop={1}>
+            <Show when={!duration()}>
+              <Spinner color={local.agent.color(props.message.agent)}>
+                <span style={{ fg: theme.text }}>{Locale.titlecase(props.message.mode)}</span>
+                <span style={{ fg: theme.textMuted }}> · {props.message.modelID}</span>
+              </Spinner>
+            </Show>
+            <Show when={duration()}>
+              <text fg={interrupted() ? theme.textMuted : theme.text}>
+                <span style={{ fg: theme.text }}>{Locale.titlecase(props.message.mode)}</span>
+                <span style={{ fg: theme.textMuted }}> · {props.message.modelID}</span>
+                <Show when={!interrupted()}>
+                  <span style={{ fg: theme.textMuted }}> · {Locale.duration(duration())}</span>
+                </Show>
+                <Show when={interrupted()}>
+                  <span style={{ fg: theme.textMuted }}> · interrupted</span>
+                </Show>
+              </text>
+            </Show>
           </box>
         </Match>
       </Switch>
