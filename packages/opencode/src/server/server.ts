@@ -56,8 +56,14 @@ export namespace Server {
     const app = new Hono()
     return app
       .onError((err, c) => {
+        const msg = err instanceof Error ? err.message : String(err)
+        const stack = err instanceof Error ? err.stack : undefined
+        const named = err instanceof NamedError ? err.toObject() : undefined
         log.error("failed", {
           error: err,
+          message: msg,
+          stack,
+          named,
         })
         if (err instanceof NamedError) {
           let status: ContentfulStatusCode
