@@ -22,7 +22,7 @@ type CommentChipProps = {
 const removeClass =
   "absolute top-0 right-0 size-6 opacity-0 pointer-events-none transition-opacity group-hover:opacity-100 group-hover:pointer-events-auto group-focus-within:opacity-100 group-focus-within:pointer-events-auto"
 const removeIconClass =
-  "absolute top-1 right-1 size-3.5 rounded-[var(--radius-sm)] flex items-center justify-center bg-transparent group-hover/remove:bg-surface-base-hover group-active/remove:bg-surface-base-active"
+  "absolute top-1 right-1 size-4 rounded-[var(--radius-sm)] border border-border-weak-base flex items-center justify-center bg-[var(--surface-raised-stronger-non-alpha)] group-active/remove:bg-surface-base-active"
 
 export const CommentChip: Component<CommentChipProps> = (props) => {
   const variant = () => props.variant ?? "preview"
