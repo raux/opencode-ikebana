@@ -1,9 +1,15 @@
 import { describe, expect, test } from "bun:test"
+import fs from "fs/promises"
 import path from "path"
 import { GrepTool } from "../../src/tool/grep"
 import { Instance } from "../../src/project/instance"
 import { tmpdir } from "../fixture/fixture"
 import { SessionID, MessageID } from "../../src/session/schema"
+
+async function write(file: string, body: string) {
+  await fs.mkdir(path.dirname(file), { recursive: true })
+  await fs.writeFile(file, body)
+}
 
 const ctx = {
   sessionID: SessionID.make("ses_test"),
@@ -41,7 +47,7 @@ describe("tool.grep", () => {
   test("no matches returns correct output", async () => {
     await using tmp = await tmpdir({
       init: async (dir) => {
-        await Bun.write(path.join(dir, "test.txt"), "hello world")
+        await write(path.join(dir, "test.txt"), "hello world")
       },
     })
     await Instance.provide({
@@ -65,8 +71,7 @@ describe("tool.grep", () => {
     // This test verifies the regex split handles both \n and \r\n
     await using tmp = await tmpdir({
       init: async (dir) => {
-        // Create a test file with content
-        await Bun.write(path.join(dir, "test.txt"), "line1\nline2\nline3")
+        await write(path.join(dir, "test.txt"), "line1\nline2\nline3")
       },
     })
     await Instance.provide({
@@ -88,7 +93,7 @@ describe("tool.grep", () => {
   test("broadens multi-word query when exact has no match", async () => {
     await using tmp = await tmpdir({
       init: async (dir) => {
-        await Bun.write(path.join(dir, "test.txt"), "upload completed\n")
+        await write(path.join(dir, "test.txt"), "upload completed\n")
       },
     })
     await Instance.provide({
@@ -111,7 +116,7 @@ describe("tool.grep", () => {
   test("suggests path when content has no match", async () => {
     await using tmp = await tmpdir({
       init: async (dir) => {
-        await Bun.write(path.join(dir, "src", "server", "auth.ts"), "export const token = 1\n")
+        await write(path.join(dir, "src", "server", "auth.ts"), "export const token = 1\n")
       },
     })
     await Instance.provide({

@@ -1,9 +1,15 @@
 import { describe, expect, test } from "bun:test"
+import fs from "fs/promises"
 import path from "path"
 import { GlobTool } from "../../src/tool/glob"
 import { Instance } from "../../src/project/instance"
 import { tmpdir } from "../fixture/fixture"
 import { SessionID, MessageID } from "../../src/session/schema"
+
+async function write(file: string, body: string) {
+  await fs.mkdir(path.dirname(file), { recursive: true })
+  await fs.writeFile(file, body)
+}
 
 const ctx = {
   sessionID: SessionID.make("ses_test"),
@@ -20,9 +26,9 @@ describe("tool.glob", () => {
   test("finds files by glob pattern", async () => {
     await using tmp = await tmpdir({
       init: async (dir) => {
-        await Bun.write(path.join(dir, "src", "foo.ts"), "export const foo = 1\n")
-        await Bun.write(path.join(dir, "src", "bar.ts"), "export const bar = 1\n")
-        await Bun.write(path.join(dir, "src", "baz.js"), "export const baz = 1\n")
+        await write(path.join(dir, "src", "foo.ts"), "export const foo = 1\n")
+        await write(path.join(dir, "src", "bar.ts"), "export const bar = 1\n")
+        await write(path.join(dir, "src", "baz.js"), "export const baz = 1\n")
       },
     })
 
@@ -48,7 +54,7 @@ describe("tool.glob", () => {
   test("returns no files found for unmatched patterns", async () => {
     await using tmp = await tmpdir({
       init: async (dir) => {
-        await Bun.write(path.join(dir, "src", "foo.ts"), "export const foo = 1\n")
+        await write(path.join(dir, "src", "foo.ts"), "export const foo = 1\n")
       },
     })
 
@@ -73,9 +79,9 @@ describe("tool.glob", () => {
   test("falls back for brace glob patterns", async () => {
     await using tmp = await tmpdir({
       init: async (dir) => {
-        await Bun.write(path.join(dir, "src", "foo.ts"), "export const foo = 1\n")
-        await Bun.write(path.join(dir, "src", "bar.js"), "export const bar = 1\n")
-        await Bun.write(path.join(dir, "src", "baz.py"), "print('baz')\n")
+        await write(path.join(dir, "src", "foo.ts"), "export const foo = 1\n")
+        await write(path.join(dir, "src", "bar.js"), "export const bar = 1\n")
+        await write(path.join(dir, "src", "baz.py"), "print('baz')\n")
       },
     })
 
