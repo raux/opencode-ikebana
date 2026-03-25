@@ -13,7 +13,6 @@ import { useDialog } from "@opencode-ai/ui/context/dialog"
 
 import FileTree from "@/components/file-tree"
 import { SessionContextUsage } from "@/components/session-context-usage"
-import { DialogSelectFile } from "@/components/dialog-select-file"
 import { SessionContextTab, SortableTab, FileVisual } from "@/components/session"
 import { useCommand } from "@/context/command"
 import { useFile, type SelectedLineRange } from "@/context/file"
@@ -56,14 +55,15 @@ export function SessionSidePanel(props: {
 
   const info = createMemo(() => (params.id ? sync.session.get(params.id) : undefined))
   const diffs = createMemo(() => (params.id ? (sync.data.session_diff[params.id] ?? []) : []))
+  const changes = createMemo(() => {
+    const id = params.id
+    if (!id) return []
+    const full = sync.data.session_diff[id]
+    if (full !== undefined) return full
+    return info()?.summary?.diffs ?? []
+  })
   const reviewCount = createMemo(() => Math.max(info()?.summary?.files ?? 0, diffs().length))
   const hasReview = createMemo(() => reviewCount() > 0)
-  const diffsReady = createMemo(() => {
-    const id = params.id
-    if (!id) return true
-    if (!hasReview()) return true
-    return sync.data.session_diff[id] !== undefined
-  })
 
   const reviewEmptyKey = createMemo(() => {
     if (sync.project && !sync.project.vcs) return "session.review.noVcs"
@@ -71,7 +71,7 @@ export function SessionSidePanel(props: {
     return "session.review.noChanges"
   })
 
-  const diffFiles = createMemo(() => diffs().map((d) => d.file))
+  const diffFiles = createMemo(() => changes().map((d) => d.file))
   const kinds = createMemo(() => {
     const merge = (a: "add" | "del" | "mix" | undefined, b: "add" | "del" | "mix") => {
       if (!a) return b
@@ -82,7 +82,7 @@ export function SessionSidePanel(props: {
     const normalize = (p: string) => p.replaceAll("\\\\", "/").replace(/\/+$/, "")
 
     const out = new Map<string, "add" | "del" | "mix">()
-    for (const diff of diffs()) {
+    for (const diff of changes()) {
       const file = normalize(diff.file)
       const kind = diff.status === "added" ? "add" : diff.status === "deleted" ? "del" : "mix"
 
@@ -293,9 +293,11 @@ export function SessionSidePanel(props: {
                             variant="ghost"
                             iconSize="large"
                             class="!rounded-md"
-                            onClick={() =>
-                              dialog.show(() => <DialogSelectFile mode="files" onOpenFile={showAllFiles} />)
-                            }
+                            onClick={() => {
+                              void import("@/components/dialog-select-file").then((x) =>
+                                dialog.show(() => <x.DialogSelectFile mode="files" onOpenFile={showAllFiles} />),
+                              )
+                            }}
                             aria-label={language.t("command.file.open")}
                           />
                         </TooltipKeybind>
@@ -386,26 +388,17 @@ export function SessionSidePanel(props: {
                 </Tabs.List>
                 <Tabs.Content value="changes" class="bg-background-stronger px-3 py-0">
                   <Switch>
-                    <Match when={hasReview()}>
-                      <Show
-                        when={diffsReady()}
-                        fallback={
-                          <div class="px-2 py-2 text-12-regular text-text-weak">
-                            {language.t("common.loading")}
-                            {language.t("common.loading.ellipsis")}
-                          </div>
-                        }
-                      >
-                        <FileTree
-                          path=""
-                          class="pt-3"
-                          allowed={diffFiles()}
-                          kinds={kinds()}
-                          draggable={false}
-                          active={props.activeDiff}
-                          onFileClick={(node) => props.focusReviewDiff(node.path)}
-                        />
-                      </Show>
+                    <Match when={hasReview() && diffFiles().length > 0}>
+                      <FileTree
+                        synthetic
+                        path=""
+                        class="pt-3"
+                        allowed={diffFiles()}
+                        kinds={kinds()}
+                        draggable={false}
+                        active={props.activeDiff}
+                        onFileClick={(node) => props.focusReviewDiff(node.path)}
+                      />
                     </Match>
                     <Match when={true}>
                       {empty(

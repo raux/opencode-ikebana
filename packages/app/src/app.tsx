@@ -133,7 +133,7 @@ function RouterRoot(props: ParentProps<{ appChildren?: JSX.Element }>) {
 export function AppBaseProviders(props: ParentProps<{ locale?: Locale }>) {
   return (
     <MetaProvider>
-      <Font />
+      <Font preloadMono={false} />
       <ThemeProvider
         onThemeApplied={(_, mode) => {
           void window.api?.setTitlebar?.({ mode })

@@ -51,6 +51,58 @@ globalThis.AI_SDK_LOG_WARNINGS = false
 const csp = (hash = "") =>
   `default-src 'self'; script-src 'self' 'wasm-unsafe-eval'${hash ? ` 'sha256-${hash}'` : ""}; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; media-src 'self' data:; connect-src 'self' data:`
 
+const api = (path: string) =>
+  path === "/agent" ||
+  path === "/command" ||
+  path === "/formatter" ||
+  path === "/log" ||
+  path === "/lsp" ||
+  path === "/path" ||
+  path === "/skill" ||
+  path === "/vcs" ||
+  path.startsWith("/auth/") ||
+  path.startsWith("/config") ||
+  path.startsWith("/experimental") ||
+  path.startsWith("/global") ||
+  path.startsWith("/mcp") ||
+  path.startsWith("/permission") ||
+  path.startsWith("/project") ||
+  path.startsWith("/provider") ||
+  path.startsWith("/question") ||
+  path.startsWith("/session")
+
+const json = (value: string | null) => {
+  const type = value?.split(";")[0]?.trim()
+  return type === "application/json" || type?.endsWith("+json")
+}
+
+const gzip = (value?: string) => {
+  if (!value) return false
+
+  let star = false
+  for (const item of value.split(",")) {
+    const [name, ...params] = item.trim().toLowerCase().split(";")
+    const q = params.find((part) => part.trim().startsWith("q="))
+    const score = q ? Number(q.trim().slice(2)) : 1
+    const ok = !Number.isNaN(score) && score > 0
+
+    if (name === "gzip") return ok
+    if (name === "*") star = ok
+  }
+
+  return star
+}
+
+const vary = (headers: Headers, value: string) => {
+  const current = headers.get("Vary")
+  if (!current) {
+    headers.set("Vary", value)
+    return
+  }
+  if (current.split(",").some((item) => item.trim().toLowerCase() === value.toLowerCase())) return
+  headers.set("Vary", `${current}, ${value}`)
+}
+
 export namespace Server {
   const log = Log.create({ service: "server" })
 
@@ -103,6 +155,26 @@ export namespace Server {
         if (!skipLogging) {
           timer.stop()
         }
+      })
+      .use(async (c, next) => {
+        await next()
+
+        if (!api(c.req.path)) return
+        if (c.req.method === "HEAD") return
+        if (c.res.headers.has("Content-Encoding")) return
+        if (c.res.headers.has("Transfer-Encoding")) return
+        if (!json(c.res.headers.get("Content-Type"))) return
+
+        if (!gzip(c.req.header("Accept-Encoding"))) return
+
+        const size = Number(c.res.headers.get("Content-Length") ?? "")
+        if (Number.isFinite(size) && size > 0 && size < 1024) return
+        if (!c.res.body) return
+
+        c.res = new Response(c.res.body.pipeThrough(new CompressionStream("gzip")), c.res)
+        c.res.headers.delete("Content-Length")
+        c.res.headers.set("Content-Encoding", "gzip")
+        vary(c.res.headers, "Accept-Encoding")
       })
       .use(
         cors({

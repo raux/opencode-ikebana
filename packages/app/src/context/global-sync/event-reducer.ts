@@ -56,6 +56,22 @@ function cleanupSessionCaches(
   )
 }
 
+function keep(next: Session, prev?: Session) {
+  const diffs = prev?.summary?.diffs
+  const files = prev?.summary?.files
+  if (!diffs?.length) return next
+  if (!next.summary || next.summary.diffs?.length) return next
+  if (next.summary.files <= 0) return next
+  if (next.summary.files !== files) return next
+  return {
+    ...next,
+    summary: {
+      ...next.summary,
+      diffs,
+    },
+  }
+}
+
 export function cleanupDroppedSessionCaches(
   store: Store<State>,
   setStore: SetStoreFunction<State>,
@@ -105,7 +121,7 @@ export function applyDirectoryEvent(input: {
       const info = (event.properties as { info: Session }).info
       const result = Binary.search(input.store.session, info.id, (s) => s.id)
       if (result.found) {
-        input.setStore("session", result.index, reconcile(info))
+        input.setStore("session", result.index, reconcile(keep(info, input.store.session[result.index])))
         break
       }
       const next = input.store.session.slice()
@@ -134,7 +150,7 @@ export function applyDirectoryEvent(input: {
         break
       }
       if (result.found) {
-        input.setStore("session", result.index, reconcile(info))
+        input.setStore("session", result.index, reconcile(keep(info, input.store.session[result.index])))
         break
       }
       const next = input.store.session.slice()

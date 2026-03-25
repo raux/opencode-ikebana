@@ -5,7 +5,7 @@ import ibmPlexMonoBold from "../assets/fonts/ibm-plex-mono-bold.woff2"
 import ibmPlexMonoMedium from "../assets/fonts/ibm-plex-mono-medium.woff2"
 import ibmPlexMonoRegular from "../assets/fonts/ibm-plex-mono.woff2"
 
-export const Font = () => {
+export const Font = (props: { preloadMono?: boolean }) => {
   return (
     <>
       <Style>{`
@@ -56,7 +56,9 @@ export const Font = () => {
       `}</Style>
       <Show when={typeof location === "undefined" || location.protocol !== "file:"}>
         <Link rel="preload" href={inter} as="font" type="font/woff2" crossorigin="anonymous" />
-        <Link rel="preload" href={ibmPlexMonoRegular} as="font" type="font/woff2" crossorigin="anonymous" />
+        <Show when={props.preloadMono !== false}>
+          <Link rel="preload" href={ibmPlexMonoRegular} as="font" type="font/woff2" crossorigin="anonymous" />
+        </Show>
       </Show>
     </>
   )

@@ -158,6 +158,13 @@ function createSessionHistoryWindow(input: SessionHistoryWindowInput) {
     preserveScroll(() => setTurnStart(nextStart))
   }
 
+  const reveal = () => {
+    const start = turnStart()
+    if (start <= 0) return false
+    backfillTurns()
+    return true
+  }
+
   /** Button path: reveal all cached turns, fetch older history, reveal one batch. */
   const loadAndReveal = async () => {
     const id = input.sessionID()
@@ -303,6 +310,7 @@ function createSessionHistoryWindow(input: SessionHistoryWindowInput) {
   return {
     turnStart,
     setTurnStart,
+    reveal,
     renderedUserMessages,
     loadAndReveal,
     onScrollerScroll,
@@ -877,6 +885,7 @@ export default function Page() {
   }
 
   const mobileChanges = createMemo(() => !isDesktop() && store.mobileTab === "changes")
+  const wantsDiff = createMemo(() => (isDesktop() ? desktopReviewOpen() && activeTab() === "review" : mobileChanges()))
 
   const fileTreeTab = () => layout.fileTree.tab()
   const setFileTreeTab = (value: "changes" | "all") => layout.fileTree.setTab(value)
@@ -1074,6 +1083,7 @@ export default function Page() {
   }
 
   const focusReviewDiff = (path: string) => {
+    void tabs().open("review")
     openReviewPanel()
     view().review.openPath(path)
     setTree({ activeDiff: path, pendingDiff: path })
@@ -1124,10 +1134,7 @@ export default function Page() {
     const id = params.id
     if (!id) return
 
-    const wants = isDesktop()
-      ? desktopFileTreeOpen() || (desktopReviewOpen() && activeTab() === "review")
-      : store.mobileTab === "changes"
-    if (!wants) return
+    if (!wantsDiff()) return
     if (sync.data.session_diff[id] !== undefined) return
     if (sync.status === "loading") return
 
@@ -1136,13 +1143,7 @@ export default function Page() {
 
   createEffect(
     on(
-      () =>
-        [
-          sessionKey(),
-          isDesktop()
-            ? desktopFileTreeOpen() || (desktopReviewOpen() && activeTab() === "review")
-            : store.mobileTab === "changes",
-        ] as const,
+      () => [sessionKey(), wantsDiff()] as const,
       ([key, wants]) => {
         if (diffFrame !== undefined) cancelAnimationFrame(diffFrame)
         if (diffTimer !== undefined) window.clearTimeout(diffTimer)
@@ -1166,19 +1167,6 @@ export default function Page() {
       { defer: true },
     ),
   )
-
-  let treeDir: string | undefined
-  createEffect(() => {
-    const dir = sdk.directory
-    if (!isDesktop()) return
-    if (!layout.fileTree.opened()) return
-    if (sync.status === "loading") return
-
-    fileTreeTab()
-    const refresh = treeDir !== dir
-    treeDir = dir
-    void (refresh ? file.tree.refresh("") : file.tree.list(""))
-  })
 
   createEffect(
     on(
@@ -1296,9 +1284,9 @@ export default function Page() {
       const el = scroller
       if (!el) return
       if (el.scrollHeight > el.clientHeight + 1) return
-      if (historyWindow.turnStart() <= 0 && !historyMore()) return
+      if (historyWindow.turnStart() <= 0) return
 
-      void historyWindow.loadAndReveal()
+      historyWindow.reveal()
     })
   }
 
@@ -1309,14 +1297,13 @@ export default function Page() {
           params.id,
           messagesReady(),
           historyWindow.turnStart(),
-          historyMore(),
           historyLoading(),
           autoScroll.userScrolled(),
           visibleUserMessages().length,
         ] as const,
-      ([id, ready, start, more, loading, scrolled]) => {
+      ([id, ready, start, loading, scrolled]) => {
         if (!id || !ready || loading || scrolled) return
-        if (start <= 0 && !more) return
+        if (start <= 0) return
         fill()
       },
       { defer: true },

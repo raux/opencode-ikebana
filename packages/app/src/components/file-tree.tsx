@@ -17,6 +17,7 @@ import {
   type JSXElement,
   type ParentProps,
 } from "solid-js"
+import { createStore, type SetStoreFunction } from "solid-js/store"
 import { Dynamic } from "solid-js/web"
 import type { FileNode } from "@opencode-ai/sdk/v2"
 
@@ -201,6 +202,7 @@ export default function FileTree(props: {
   modified?: readonly string[]
   kinds?: ReadonlyMap<string, Kind>
   draggable?: boolean
+  synthetic?: boolean
   onFileClick?: (file: FileNode) => void
 
   _filter?: Filter
@@ -208,10 +210,15 @@ export default function FileTree(props: {
   _deeps?: Map<string, number>
   _kinds?: ReadonlyMap<string, Kind>
   _chain?: readonly string[]
+  _open?: Record<string, boolean>
+  _setOpen?: SetStoreFunction<Record<string, boolean>>
 }) {
   const file = useFile()
   const level = props.level ?? 0
   const draggable = () => props.draggable ?? true
+  const local = createStore<Record<string, boolean>>({})
+  const open = props._open ?? local[0]
+  const setOpen = props._setOpen ?? local[1]
 
   const key = (p: string) =>
     file
@@ -258,6 +265,7 @@ export default function FileTree(props: {
 
   const deeps = createMemo(() => {
     if (props._deeps) return props._deeps
+    if (props.synthetic) return new Map<string, number>()
 
     const out = new Map<string, number>()
 
@@ -304,6 +312,7 @@ export default function FileTree(props: {
   })
 
   createEffect(() => {
+    if (props.synthetic) return
     const current = filter()
     const dirs = dirsToExpand({
       level,
@@ -317,6 +326,7 @@ export default function FileTree(props: {
     on(
       () => props.path,
       (path) => {
+        if (props.synthetic) return
         const dir = untrack(() => file.tree.state(path))
         if (!shouldListRoot({ level, dir })) return
         void file.tree.list(path)
@@ -388,7 +398,8 @@ export default function FileTree(props: {
     <div data-component="filetree" class={`flex flex-col gap-0.5 ${props.class ?? ""}`}>
       <For each={nodes()}>
         {(node) => {
-          const expanded = () => file.tree.state(node.path)?.expanded ?? false
+          const expanded = () =>
+            props.synthetic ? (open[node.path] ?? true) : (file.tree.state(node.path)?.expanded ?? false)
           const deep = () => deeps().get(node.path) ?? -1
           const kind = () => visibleKind(node, kinds(), marks())
           const active = () => !!kind() && !node.ignored
@@ -402,7 +413,13 @@ export default function FileTree(props: {
                   data-scope="filetree"
                   forceMount={false}
                   open={expanded()}
-                  onOpenChange={(open) => (open ? file.tree.expand(node.path) : file.tree.collapse(node.path))}
+                  onOpenChange={(open) => {
+                    if (props.synthetic) {
+                      setOpen(node.path, open)
+                      return
+                    }
+                    open ? file.tree.expand(node.path) : file.tree.collapse(node.path)
+                  }}
                 >
                   <Collapsible.Trigger>
                     <FileTreeNode
@@ -435,6 +452,7 @@ export default function FileTree(props: {
                       <FileTree
                         path={node.path}
                         level={level + 1}
+                        synthetic={props.synthetic}
                         allowed={props.allowed}
                         modified={props.modified}
                         kinds={props.kinds}
@@ -446,6 +464,8 @@ export default function FileTree(props: {
                         _deeps={deeps()}
                         _kinds={kinds()}
                         _chain={chain}
+                        _open={open}
+                        _setOpen={setOpen}
                       />
                     </Show>
                   </Collapsible.Content>

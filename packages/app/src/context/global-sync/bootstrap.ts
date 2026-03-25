@@ -243,12 +243,6 @@ export async function bootstrapDirectory(input: {
   ]
 
   const slow = [
-    () =>
-      retry(() =>
-        input.sdk.provider.list().then((x) => {
-          input.setStore("provider", normalizeProviderList(x.data!))
-        }),
-      ),
     () => Promise.resolve(input.loadSessions(input.directory)),
     () => retry(() => input.sdk.mcp.status().then((x) => input.setStore("mcp", x.data!))),
     () => retry(() => input.sdk.lsp.status().then((x) => input.setStore("lsp", x.data!))),

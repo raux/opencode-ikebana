@@ -180,8 +180,8 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
       return globalSync.child(directory)
     }
     const absolute = (path: string) => (current()[0].path.directory + "/" + path).replace("//", "/")
-    const initialMessagePageSize = 80
-    const historyMessagePageSize = 200
+    const initialMessagePageSize = 40
+    const historyMessagePageSize = 80
     const inflight = new Map<string, Promise<void>>()
     const inflightDiff = new Map<string, Promise<void>>()
     const inflightTodo = new Map<string, Promise<void>>()
@@ -460,13 +460,16 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
               }
             }
 
-            const hasSession = Binary.search(store.session, sessionID, (s) => s.id).found
+            const hit = Binary.search(store.session, sessionID, (s) => s.id)
+            const session = hit.found ? store.session[hit.index] : undefined
+            const hasSession = hit.found
             const cached = store.message[sessionID] !== undefined && meta.limit[key] !== undefined
-            if (cached && hasSession && !opts?.force) return
+            const needs = !!session?.summary?.files && !session.summary?.diffs
+            if (cached && hasSession && !opts?.force && !needs) return
 
             const limit = meta.limit[key] ?? initialMessagePageSize
             const sessionReq =
-              hasSession && !opts?.force
+              hasSession && !opts?.force && !needs
                 ? Promise.resolve()
                 : retry(() => client.session.get({ sessionID })).then((session) => {
                     if (!tracked(directory, sessionID)) return

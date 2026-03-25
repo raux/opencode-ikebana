@@ -12,6 +12,14 @@ import { Bus } from "@/bus"
 import { NotFoundError } from "@/storage/db"
 
 export namespace SessionSummary {
+  function shape(diffs: Snapshot.FileDiff[]) {
+    return diffs.map((item) => ({
+      ...item,
+      before: "",
+      after: "",
+    }))
+  }
+
   function unquoteGitPath(input: string) {
     if (!input.startsWith('"')) return input
     if (!input.endsWith('"')) return input
@@ -140,6 +148,8 @@ export namespace SessionSummary {
       return next
     },
   )
+
+  export const list = fn(SessionID.zod, async (sessionID) => shape(await diff({ sessionID })))
 
   export async function computeDiff(input: { messages: MessageV2.WithParts[] }) {
     let from: string | undefined

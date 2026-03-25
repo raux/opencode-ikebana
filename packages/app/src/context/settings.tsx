@@ -1,5 +1,5 @@
 import { createStore, reconcile } from "solid-js/store"
-import { createEffect, createMemo } from "solid-js"
+import { createEffect, createMemo, onCleanup } from "solid-js"
 import { createSimpleContext } from "@opencode-ai/ui/context"
 import { persisted } from "@/utils/persist"
 
@@ -120,7 +120,16 @@ export const { use: useSettings, provider: SettingsProvider } = createSimpleCont
       if (typeof document === "undefined") return
       const id = store.appearance?.font ?? defaultSettings.appearance.font
       if (id !== defaultSettings.appearance.font) {
-        void loadFont().then((x) => x.ensureMonoFont(id))
+        const run = () => {
+          void loadFont().then((x) => x.ensureMonoFont(id))
+        }
+        if (typeof requestIdleCallback === "function") {
+          const idle = requestIdleCallback(run, { timeout: 2000 })
+          onCleanup(() => cancelIdleCallback(idle))
+        } else {
+          const timeout = window.setTimeout(run, 2000)
+          onCleanup(() => window.clearTimeout(timeout))
+        }
       }
       document.documentElement.style.setProperty("--font-family-mono", monoFontFamily(id))
     })
