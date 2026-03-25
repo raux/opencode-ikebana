@@ -36,6 +36,14 @@ export async function resolveDirectory(directory: string) {
     .then((x) => x.data?.directory ?? directory)
 }
 
+export function workspaceKey(dir: string) {
+  const value = dir.replaceAll("\\", "/")
+  const drive = value.match(/^([A-Za-z]:)\/+$/)
+  if (drive) return `${drive[1]}/`
+  if (/^\/+$/i.test(value)) return "/"
+  return value.replace(/\/+$/, "")
+}
+
 export async function getWorktree() {
   const sdk = createSdk()
   const result = await sdk.path.get()
@@ -57,7 +65,8 @@ export function sessionPath(directory: string, sessionID?: string) {
 }
 
 export function workspacePersistKey(directory: string, key: string) {
-  const head = (directory.slice(0, 12) || "workspace").replace(/[^a-zA-Z0-9._-]/g, "-")
-  const sum = checksum(directory) ?? "0"
+  const dir = workspaceKey(directory)
+  const head = (dir.slice(0, 12) || "workspace").replace(/[^a-zA-Z0-9._-]/g, "-")
+  const sum = checksum(dir) ?? "0"
   return `opencode.workspace.${head}.${sum}.dat:workspace:${key}`
 }

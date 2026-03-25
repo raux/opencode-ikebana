@@ -5,7 +5,7 @@ import os from "node:os"
 import path from "node:path"
 import { execSync } from "node:child_process"
 import { terminalAttr, type E2EWindow } from "../src/testing/terminal"
-import { createSdk, modKey, resolveDirectory, serverUrl } from "./utils"
+import { createSdk, modKey, resolveDirectory, serverUrl, workspaceKey } from "./utils"
 import {
   dropdownMenuTriggerSelector,
   dropdownMenuContentSelector,
@@ -438,7 +438,7 @@ export async function resolveSlug(slug: string) {
 }
 
 export async function waitDir(page: Page, directory: string) {
-  const target = await resolveDirectory(directory)
+  const target = workspaceKey(await resolveDirectory(directory))
   await expect
     .poll(
       async () => {
@@ -446,7 +446,7 @@ export async function waitDir(page: Page, directory: string) {
         const slug = slugFromUrl(page.url())
         if (!slug) return ""
         return resolveSlug(slug)
-          .then((item) => item.directory)
+          .then((item) => workspaceKey(item.directory))
           .catch(() => "")
       },
       { timeout: 45_000 },
@@ -456,7 +456,7 @@ export async function waitDir(page: Page, directory: string) {
 }
 
 export async function waitSession(page: Page, input: { directory: string; sessionID?: string }) {
-  const target = await resolveDirectory(input.directory)
+  const target = workspaceKey(await resolveDirectory(input.directory))
   await expect
     .poll(
       async () => {
@@ -464,14 +464,14 @@ export async function waitSession(page: Page, input: { directory: string; sessio
         const slug = slugFromUrl(page.url())
         if (!slug) return false
         const resolved = await resolveSlug(slug).catch(() => undefined)
-        if (!resolved || resolved.directory !== target) return false
+        if (!resolved || workspaceKey(resolved.directory) !== target) return false
         if (input.sessionID && sessionIDFromUrl(page.url()) !== input.sessionID) return false
 
         const state = await probeSession(page)
         if (input.sessionID && (!state || state.sessionID !== input.sessionID)) return false
         if (state?.dir) {
           const dir = await resolveDirectory(state.dir).catch(() => state.dir ?? "")
-          if (dir !== target) return false
+          if (workspaceKey(dir) !== target) return false
         }
 
         return page
@@ -488,7 +488,7 @@ export async function waitSession(page: Page, input: { directory: string; sessio
 
 export async function waitSessionSaved(directory: string, sessionID: string, timeout = 30_000) {
   const sdk = createSdk(directory)
-  const target = await resolveDirectory(directory)
+  const target = workspaceKey(await resolveDirectory(directory))
 
   await expect
     .poll(
@@ -498,7 +498,9 @@ export async function waitSessionSaved(directory: string, sessionID: string, tim
           .then((x) => x.data)
           .catch(() => undefined)
         if (!data?.directory) return ""
-        return resolveDirectory(data.directory).catch(() => data.directory)
+        return resolveDirectory(data.directory)
+          .then(workspaceKey)
+          .catch(() => workspaceKey(data.directory))
       },
       { timeout },
     )
