@@ -664,10 +664,11 @@ export namespace File {
         const query = input.query.trim()
         const limit = input.limit ?? 100
         const kind = input.type ?? (input.dirs === false ? "file" : "all")
+        const fast = /[./\\]/.test(query)
         log.info("search", { query, kind })
 
-        if (query && kind === "file") {
-          const fast = yield* Effect.promise(() =>
+        if (query && fast && kind === "file") {
+          const files = yield* Effect.promise(() =>
             Fff.files({
               cwd: Instance.directory,
               query,
@@ -676,9 +677,9 @@ export namespace File {
               .then((out) => Array.from(new Set(out.items.map((item) => item.relativePath.replaceAll("\\", "/")))))
               .catch(() => []),
           )
-          if (fast.length) {
-            log.info("search", { query, kind, results: fast.length, mode: "fff" })
-            return fast
+          if (files.length) {
+            log.info("search", { query, kind, results: files.length, mode: "fff" })
+            return files
           }
         }
 
