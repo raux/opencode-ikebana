@@ -14,6 +14,7 @@ import { Instance } from "../project/instance"
 import { Filesystem } from "../util/filesystem"
 import { Glob } from "../util/glob"
 import { Log } from "../util/log"
+import { Fff } from "./fff"
 import { Protected } from "./protected"
 
 export namespace File {
@@ -660,15 +661,31 @@ export namespace File {
         dirs?: boolean
         type?: "file" | "directory"
       }) {
+        const query = input.query.trim()
+        const limit = input.limit ?? 100
+        const kind = input.type ?? (input.dirs === false ? "file" : "all")
+        log.info("search", { query, kind })
+
+        if (query && kind === "file") {
+          const fast = yield* Effect.promise(() =>
+            Fff.files({
+              cwd: Instance.directory,
+              query,
+              size: limit,
+            })
+              .then((out) => Array.from(new Set(out.items.map((item) => item.relativePath.replaceAll("\\", "/")))))
+              .catch(() => []),
+          )
+          if (fast.length) {
+            log.info("search", { query, kind, results: fast.length, mode: "fff" })
+            return fast
+          }
+        }
+
         yield* ensure()
         const { cache } = yield* InstanceState.get(state)
 
         return yield* Effect.promise(async () => {
-          const query = input.query.trim()
-          const limit = input.limit ?? 100
-          const kind = input.type ?? (input.dirs === false ? "file" : "all")
-          log.info("search", { query, kind })
-
           const result = cache
           const preferHidden = query.startsWith(".") || query.includes("/.")
 
