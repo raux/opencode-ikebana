@@ -484,7 +484,7 @@ export default function Page() {
 
   createEffect(
     on(
-      () => lastUserMessage()?.id,
+      () => [params.id, lastUserMessage()?.id] as const,
       () => {
         const msg = lastUserMessage()
         if (!msg) return
