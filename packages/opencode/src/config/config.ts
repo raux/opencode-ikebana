@@ -81,27 +81,6 @@ export namespace Config {
       log.info("config dir is not writable, skipping dependency install", { dir })
       return
     }
-    const pkg = path.join(dir, "package.json")
-    const targetVersion = Installation.isLocal() ? "*" : Installation.VERSION
-
-    const json = await Filesystem.readJson<{ dependencies?: Record<string, string> }>(pkg).catch(() => ({
-      dependencies: {},
-    }))
-    json.dependencies = {
-      ...json.dependencies,
-      "@opencode-ai/plugin": targetVersion,
-    }
-    await Filesystem.writeJson(pkg, json)
-
-    const gitignore = path.join(dir, ".gitignore")
-    if (!(await Filesystem.exists(gitignore)))
-      await Filesystem.write(
-        gitignore,
-        ["node_modules", "plans", "package.json", "bun.lock", ".gitignore", "package-lock.json"].join("\n"),
-      )
-
-    // Install any additional dependencies defined in the package.json
-    // This allows local plugins and custom tools to use external packages
     await Npm.install(dir)
   }
 
@@ -1259,12 +1238,7 @@ export namespace Config {
             }
           }
 
-          deps.push(
-            iife(async () => {
-              const shouldInstall = await needsInstall(dir)
-              if (shouldInstall) await installDependencies(dir)
-            }),
-          )
+          deps.push(installDependencies(dir))
 
           result.command = mergeDeep(result.command ?? {}, yield* Effect.promise(() => loadCommand(dir)))
           result.agent = mergeDeep(result.agent, yield* Effect.promise(() => loadAgent(dir)))

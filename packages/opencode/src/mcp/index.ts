@@ -205,7 +205,6 @@ export namespace MCP {
     status: Status
     defs?: MCPToolDef[]
   }
-  }
 
   // --- Effect Service ---
 
