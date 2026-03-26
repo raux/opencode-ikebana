@@ -67,141 +67,8 @@ export namespace Server {
 
   export const createApp = (opts: { cors?: string[] }): Hono => {
     const app = new Hono()
-    return app
-      .onError((err, c) => {
-        log.error("failed", {
-          error: err,
-        })
-        if (err instanceof NamedError) {
-          let status: ContentfulStatusCode
-          if (err instanceof NotFoundError) status = 404
-          else if (err instanceof Provider.ModelNotFoundError) status = 400
-          else if (err.name === "ProviderAuthValidationFailed") status = 400
-          else if (err.name.startsWith("Worktree")) status = 400
-          else status = 500
-          return c.json(err.toObject(), { status })
-        }
-        if (err instanceof HTTPException) return err.getResponse()
-        const message = err instanceof Error && err.stack ? err.stack : err.toString()
-        return c.json(new NamedError.Unknown({ message }).toObject(), {
-          status: 500,
-        })
-      })
-      .use((c, next) => {
-        // Allow CORS preflight requests to succeed without auth.
-        // Browser clients sending Authorization headers will preflight with OPTIONS.
-        if (c.req.method === "OPTIONS") return next()
-        const password = Flag.OPENCODE_SERVER_PASSWORD
-        if (!password) return next()
-        const username = Flag.OPENCODE_SERVER_USERNAME ?? "opencode"
-        return basicAuth({ username, password })(c, next)
-      })
-      .use(async (c, next) => {
-        const skipLogging = c.req.path === "/log"
-        if (!skipLogging) {
-          log.info("request", {
-            method: c.req.method,
-            path: c.req.path,
-          })
-        }
-        const timer = log.time("request", {
-          method: c.req.method,
-          path: c.req.path,
-        })
-        await next()
-        if (!skipLogging) {
-          timer.stop()
-        }
-      })
-      .use(
-        cors({
-          origin(input) {
-            if (!input) return
 
-            if (input.startsWith("http://localhost:")) return input
-            if (input.startsWith("http://127.0.0.1:")) return input
-            if (
-              input === "tauri://localhost" ||
-              input === "http://tauri.localhost" ||
-              input === "https://tauri.localhost"
-            )
-              return input
-
-            // *.opencode.ai (https only, adjust if needed)
-            if (/^https:\/\/([a-z0-9-]+\.)*opencode\.ai$/.test(input)) {
-              return input
-            }
-            if (opts?.cors?.includes(input)) {
-              return input
-            }
-
-            return
-          },
-        }),
-      )
-      .route("/global", GlobalRoutes())
-      .put(
-        "/auth/:providerID",
-        describeRoute({
-          summary: "Set auth credentials",
-          description: "Set authentication credentials",
-          operationId: "auth.set",
-          responses: {
-            200: {
-              description: "Successfully set authentication credentials",
-              content: {
-                "application/json": {
-                  schema: resolver(z.boolean()),
-                },
-              },
-            },
-            ...errors(400),
-          },
-        }),
-        validator(
-          "param",
-          z.object({
-            providerID: ProviderID.zod,
-          }),
-        ),
-        validator("json", Auth.Info.zod),
-        async (c) => {
-          const providerID = c.req.valid("param").providerID
-          const info = c.req.valid("json")
-          await Auth.set(providerID, info)
-          return c.json(true)
-        },
-      )
-      .delete(
-        "/auth/:providerID",
-        describeRoute({
-          summary: "Remove auth credentials",
-          description: "Remove authentication credentials",
-          operationId: "auth.remove",
-          responses: {
-            200: {
-              description: "Successfully removed authentication credentials",
-              content: {
-                "application/json": {
-                  schema: resolver(z.boolean()),
-                },
-              },
-            },
-            ...errors(400),
-          },
-        }),
-        validator(
-          "param",
-          z.object({
-            providerID: ProviderID.zod,
-          }),
-        ),
-        async (c) => {
-          const providerID = c.req.valid("param").providerID
-          await Auth.remove(providerID)
-          return c.json(true)
-        },
-      )
+    const InstanceRoutes: Hono = new Hono()
       .use(async (c, next) => {
         if (c.req.path === "/log") return next()
         const rawWorkspaceID = c.req.query("workspace") || c.req.header("x-opencode-workspace")
@@ -509,6 +376,143 @@ export namespace Server {
           return c.json(await Format.status())
         },
       )
+
+    return app
+      .onError((err, c) => {
+        log.error("failed", {
+          error: err,
+        })
+        if (err instanceof NamedError) {
+          let status: ContentfulStatusCode
+          if (err instanceof NotFoundError) status = 404
+          else if (err instanceof Provider.ModelNotFoundError) status = 400
+          else if (err.name === "ProviderAuthValidationFailed") status = 400
+          else if (err.name.startsWith("Worktree")) status = 400
+          else status = 500
+          return c.json(err.toObject(), { status })
+        }
+        if (err instanceof HTTPException) return err.getResponse()
+        const message = err instanceof Error && err.stack ? err.stack : err.toString()
+        return c.json(new NamedError.Unknown({ message }).toObject(), {
+          status: 500,
+        })
+      })
+      .use((c, next) => {
+        // Allow CORS preflight requests to succeed without auth.
+        // Browser clients sending Authorization headers will preflight with OPTIONS.
+        if (c.req.method === "OPTIONS") return next()
+        const password = Flag.OPENCODE_SERVER_PASSWORD
+        if (!password) return next()
+        const username = Flag.OPENCODE_SERVER_USERNAME ?? "opencode"
+        return basicAuth({ username, password })(c, next)
+      })
+      .use(async (c, next) => {
+        const skipLogging = c.req.path === "/log"
+        if (!skipLogging) {
+          log.info("request", {
+            method: c.req.method,
+            path: c.req.path,
+          })
+        }
+        const timer = log.time("request", {
+          method: c.req.method,
+          path: c.req.path,
+        })
+        await next()
+        if (!skipLogging) {
+          timer.stop()
+        }
+      })
+      .use(
+        cors({
+          origin(input) {
+            if (!input) return
+
+            if (input.startsWith("http://localhost:")) return input
+            if (input.startsWith("http://127.0.0.1:")) return input
+            if (
+              input === "tauri://localhost" ||
+              input === "http://tauri.localhost" ||
+              input === "https://tauri.localhost"
+            )
+              return input
+
+            // *.opencode.ai (https only, adjust if needed)
+            if (/^https:\/\/([a-z0-9-]+\.)*opencode\.ai$/.test(input)) {
+              return input
+            }
+            if (opts?.cors?.includes(input)) {
+              return input
+            }
+
+            return
+          },
+        }),
+      )
+      .route("/global", GlobalRoutes())
+      .put(
+        "/auth/:providerID",
+        describeRoute({
+          summary: "Set auth credentials",
+          description: "Set authentication credentials",
+          operationId: "auth.set",
+          responses: {
+            200: {
+              description: "Successfully set authentication credentials",
+              content: {
+                "application/json": {
+                  schema: resolver(z.boolean()),
+                },
+              },
+            },
+            ...errors(400),
+          },
+        }),
+        validator(
+          "param",
+          z.object({
+            providerID: ProviderID.zod,
+          }),
+        ),
+        validator("json", Auth.Info.zod),
+        async (c) => {
+          const providerID = c.req.valid("param").providerID
+          const info = c.req.valid("json")
+          await Auth.set(providerID, info)
+          return c.json(true)
+        },
+      )
+      .delete(
+        "/auth/:providerID",
+        describeRoute({
+          summary: "Remove auth credentials",
+          description: "Remove authentication credentials",
+          operationId: "auth.remove",
+          responses: {
+            200: {
+              description: "Successfully removed authentication credentials",
+              content: {
+                "application/json": {
+                  schema: resolver(z.boolean()),
+                },
+              },
+            },
+            ...errors(400),
+          },
+        }),
+        validator(
+          "param",
+          z.object({
+            providerID: ProviderID.zod,
+          }),
+        ),
+        async (c) => {
+          const providerID = c.req.valid("param").providerID
+          await Auth.remove(providerID)
+          return c.json(true)
+        },
+      )
+      .route("/", InstanceRoutes)
       .all("/*", async (c) => {
         const embeddedWebUI = await embeddedUIPromise
         const path = c.req.path
@@ -516,13 +520,14 @@ export namespace Server {
         if (embeddedWebUI) {
           const match = embeddedWebUI[path.replace(/^\//, "")] ?? embeddedWebUI["index.html"] ?? null
           if (!match) return c.json({ error: "Not Found" }, 404)
-          const file = Bun.file(match)
-          if (await file.exists()) {
-            c.header("Content-Type", file.type)
-            if (file.type.startsWith("text/html")) {
+          const file = await Filesystem.readArrayBuffer(match).catch(() => null)
+          if (file) {
+            const mime = Filesystem.mimeType(match)
+            c.header("Content-Type", mime)
+            if (mime.startsWith("text/html")) {
               c.header("Content-Security-Policy", DEFAULT_CSP)
             }
-            return c.body(await file.arrayBuffer())
+            return c.body(file)
           } else {
             return c.json({ error: "Not Found" }, 404)
           }
@@ -543,7 +548,7 @@ export namespace Server {
           response.headers.set("Content-Security-Policy", csp(hash))
           return response
         }
-      }) as unknown as Hono
+      }) as Hono
   }
 
   export async function openapi() {
