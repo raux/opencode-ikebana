@@ -209,14 +209,18 @@ export namespace MCP {
   const connectTransport = (transport: Transport, timeout: number) =>
     Effect.acquireUseRelease(
       Effect.succeed(transport),
-      (t) =>
-        Effect.tryPromise({
-          try: () => {
-            const client = new Client({ name: "opencode", version: Installation.VERSION })
-            return withTimeout(client.connect(t), timeout).then(() => client)
-          },
+      (t) => {
+        const client = new Client({ name: "opencode", version: Installation.VERSION })
+        return Effect.tryPromise({
+          try: () => client.connect(t).then(() => client),
           catch: (e) => (e instanceof Error ? e : new Error(String(e))),
-        }),
+        }).pipe(
+          Effect.timeoutOrElse({
+            duration: `${timeout} millis`,
+            onTimeout: () => Effect.fail(new Error(`Operation timed out after ${timeout}ms`)),
+          }),
+        )
+      },
       (t, exit) =>
         Exit.isFailure(exit)
           ? Effect.tryPromise(() => t.close()).pipe(Effect.ignore)
