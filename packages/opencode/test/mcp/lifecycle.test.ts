@@ -19,9 +19,11 @@ interface MockClientState {
 const clientStates = new Map<string, MockClientState>()
 let lastCreatedClientName: string | undefined
 let connectShouldFail = false
+let connectShouldHang = false
 let connectError = "Mock transport cannot connect"
 // Tracks how many Client instances were created (detects leaks)
 let clientCreateCount = 0
+let transportCloseCount = 0
 
 function getOrCreateClientState(name?: string): MockClientState {
   const key = name ?? "default"
@@ -51,8 +53,11 @@ class MockStdioTransport {
   constructor(_opts: any) {}
   async start() {
     if (connectShouldFail) throw new Error(connectError)
+    if (connectShouldHang) await new Promise(() => {}) // never resolves
   }
-  async close() {}
+  async close() {
+    transportCloseCount++
+  }
 }
 
 class MockStreamableHTTP {
@@ -145,8 +150,10 @@ beforeEach(() => {
   clientStates.clear()
   lastCreatedClientName = undefined
   connectShouldFail = false
+  connectShouldHang = false
   connectError = "Mock transport cannot connect"
   clientCreateCount = 0
+  transportCloseCount = 0
 })
 
 // Import after mocks
@@ -657,4 +664,28 @@ test(
       expect(keys.length).toBe(2)
     },
   ),
+)
+
+// ========================================================================
+// Test: timed-out local transport is closed (process leak regression)
+// ========================================================================
+
+test(
+  "local stdio transport is closed when connect times out (no process leak)",
+  withInstance({}, async () => {
+    connectShouldHang = true
+
+    const result = await MCP.add("hanging-server", {
+      type: "local",
+      command: ["node", "fake-server.js"],
+      timeout: 100, // 100ms timeout so test is fast
+    })
+
+    const status = (result.status as any)["hanging-server"] ?? result.status
+    expect(status.status).toBe("failed")
+    expect(status.error).toContain("timed out")
+
+    // The transport must be closed to kill the child process
+    expect(transportCloseCount).toBeGreaterThanOrEqual(1)
+  }),
 )
