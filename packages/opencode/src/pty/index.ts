@@ -3,7 +3,7 @@ import { Bus } from "@/bus"
 import { InstanceState } from "@/effect/instance-state"
 import { makeRuntime } from "@/effect/run-service"
 import { Instance } from "@/project/instance"
-import { type IPty } from "bun-pty"
+import type { Proc } from "#pty"
 import z from "zod"
 import { Log } from "../util/log"
 import { lazy } from "@opencode-ai/util/lazy"
@@ -30,7 +30,7 @@ export namespace Pty {
 
   type Active = {
     info: Info
-    process: IPty
+    process: Proc
     buffer: string
     bufferCursor: number
     cursor: number
@@ -52,10 +52,7 @@ export namespace Pty {
     return out
   }
 
-  const pty = lazy(async () => {
-    const { spawn } = await import("bun-pty")
-    return spawn
-  })
+  const pty = lazy(() => import("#pty"))
 
   export const Info = z
     .object({
@@ -199,7 +196,7 @@ export namespace Pty {
           }
           log.info("creating session", { id, cmd: command, args, cwd })
 
-          const spawn = await pty()
+          const { spawn } = await pty()
           const proc = spawn(command, args, {
             name: "xterm-256color",
             cwd,

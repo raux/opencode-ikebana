@@ -45,7 +45,7 @@ await Bun.build({
   entrypoints: ["./src/node.ts"],
   outdir: "./dist",
   format: "esm",
-  external: ["jsonc-parser"],
+  external: ["jsonc-parser", "node-pty"],
   define: {
     OPENCODE_MIGRATIONS: JSON.stringify(migrations),
   },

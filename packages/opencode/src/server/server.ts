@@ -25,7 +25,7 @@ import { ProviderID } from "../provider/schema"
 import { WorkspaceRouterMiddleware } from "../control-plane/workspace-router-middleware"
 import { ProjectRoutes } from "./routes/project"
 import { SessionRoutes } from "./routes/session"
-// import { PtyRoutes } from "./routes/pty"
+import { PtyRoutes } from "./routes/pty"
 import { McpRoutes } from "./routes/mcp"
 import { FileRoutes } from "./routes/file"
 import { ConfigRoutes } from "./routes/config"
@@ -524,6 +524,7 @@ export namespace Server {
           return c.json(await Format.status())
         },
       )
+      .route("/pty", PtyRoutes(ws.upgradeWebSocket))
       .all("/*", async (c) => {
         const embeddedWebUI = await embeddedUIPromise
         const path = c.req.path

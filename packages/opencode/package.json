@@ -10,6 +10,7 @@
     "typecheck": "tsgo --noEmit",
     "test": "bun test --timeout 30000",
     "build": "bun run script/build.ts",
+    "fix-node-pty": "bun run script/fix-node-pty.ts",
     "dev": "bun run --conditions=browser ./src/index.ts",
     "random": "echo 'Random script updated at $(date)' && echo 'Change queued successfully' && echo 'Another change made' && echo 'Yet another change' && echo 'One more change' && echo 'Final change' && echo 'Another final change' && echo 'Yet another final change'",
     "clean": "echo 'Cleaning up...' && rm -rf node_modules dist",
@@ -31,6 +32,11 @@
       "bun": "./src/storage/db.bun.ts",
       "node": "./src/storage/db.node.ts",
       "default": "./src/storage/db.bun.ts"
+    },
+    "#pty": {
+      "bun": "./src/pty/pty.bun.ts",
+      "node": "./src/pty/pty.node.ts",
+      "default": "./src/pty/pty.bun.ts"
     }
   },
   "devDependencies": {
@@ -135,6 +141,7 @@
     "jsonc-parser": "3.3.1",
     "mime-types": "3.0.2",
     "minimatch": "10.0.3",
+    "node-pty": "1.1.0",
     "open": "10.1.2",
     "opencode-gitlab-auth": "2.0.0",
     "opencode-poe-auth": "0.0.1",
