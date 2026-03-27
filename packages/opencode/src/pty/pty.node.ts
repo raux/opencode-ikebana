@@ -1,4 +1,4 @@
-import * as pty from "node-pty"
+import * as pty from "@lydell/node-pty"
 import type { Opts, Proc } from "./pty"
 
 export type { Disp, Exit, Opts, Proc } from "./pty"
