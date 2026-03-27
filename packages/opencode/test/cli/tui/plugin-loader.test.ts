@@ -479,11 +479,11 @@ test("continues loading when a plugin is missing config metadata", async () => {
   try {
     await TuiPluginRuntime.init(createTuiPluginApi())
     // bad plugin was skipped (no metadata entry)
-    await expect(fs.readFile(path.join(tmp.path, "bad.txt"), "utf8")).rejects.toThrow()
+    expect(await fs.readFile(path.join(tmp.path, "bad.txt"), "utf8")).rejects.toThrow()
     // good plugin loaded fine
-    await expect(fs.readFile(tmp.extra.goodMarker, "utf8")).resolves.toBe("called")
+    expect(await fs.readFile(tmp.extra.goodMarker, "utf8")).resolves.toBe("called")
     // bare string spec gets undefined options
-    await expect(fs.readFile(tmp.extra.bareMarker, "utf8")).resolves.toBe("undefined")
+    expect(await fs.readFile(tmp.extra.bareMarker, "utf8")).resolves.toBe("undefined")
   } finally {
     await TuiPluginRuntime.dispose()
     cwd.mockRestore()
