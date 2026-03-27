@@ -1,17 +1,11 @@
-import { NodeChildProcessSpawner, NodeFileSystem, NodePath } from "@effect/platform-node"
 import { describe, expect } from "bun:test"
-import { Effect, Layer } from "effect"
+import { Effect } from "effect"
 import { provideTmpdirInstance } from "../fixture/fixture"
 import { testEffect } from "../lib/effect"
 import { Format } from "../../src/format"
-import { Config } from "../../src/config/config"
 import * as Formatter from "../../src/format/formatter"
 
-const node = NodeChildProcessSpawner.layer.pipe(
-  Layer.provideMerge(Layer.mergeAll(NodeFileSystem.layer, NodePath.layer)),
-)
-
-const it = testEffect(Layer.mergeAll(Format.layer, node).pipe(Layer.provide(Config.defaultLayer)))
+const it = testEffect(Format.defaultLayer)
 
 describe("Format", () => {
   it.effect("status() returns built-in formatters when no config overrides", () =>
