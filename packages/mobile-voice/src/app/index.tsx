@@ -6,6 +6,8 @@ import {
   Pressable,
   ScrollView,
   TextInput,
+  Modal,
+  Alert,
   LayoutChangeEvent,
   AppState,
   AppStateStatus,
@@ -107,7 +109,63 @@ function formatSessionUpdated(updatedMs: number): string {
 
 type DropdownMode = "none" | "server" | "session"
 
+type Pair = {
+  v: 1
+  relayURL: string
+  relaySecret: string
+  hosts: string[]
+}
+
+type Scan = {
+  data: string
+}
+
+function parsePair(input: string): Pair | undefined {
+  try {
+    const data = JSON.parse(input)
+    if (!data || typeof data !== "object") return
+    if ((data as { v?: unknown }).v !== 1) return
+    if (typeof (data as { relayURL?: unknown }).relayURL !== "string") return
+    if (typeof (data as { relaySecret?: unknown }).relaySecret !== "string") return
+    if (!Array.isArray((data as { hosts?: unknown }).hosts)) return
+    const hosts = (data as { hosts: unknown[] }).hosts.filter((item): item is string => typeof item === "string")
+    if (!hosts.length) return
+    return {
+      v: 1,
+      relayURL: (data as { relayURL: string }).relayURL,
+      relaySecret: (data as { relaySecret: string }).relaySecret,
+      hosts,
+    }
+  } catch {
+    return
+  }
+}
+
+function pickHost(list: string[]): string | undefined {
+  const next = list.find((item) => {
+    try {
+      const url = new URL(item)
+      if (url.hostname === "127.0.0.1") return false
+      if (url.hostname === "localhost") return false
+      if (url.hostname === "0.0.0.0") return false
+      if (url.hostname === "::1") return false
+      return true
+    } catch {
+      return false
+    }
+  })
+  return next ?? list[0]
+}
+
 export default function DictationScreen() {
+  const [camera, setCamera] = useState<{
+    CameraView: React.ComponentType<{
+      style?: unknown
+      barcodeScannerSettings?: { barcodeTypes?: string[] }
+      onBarcodeScanned?: (event: Scan) => void
+    }>
+    requestCameraPermissionsAsync: () => Promise<{ granted: boolean | undefined }>
+  } | null>(null)
   const [modelReset, setModelReset] = useState(false)
   const model = useSpeechToText({
     model: WHISPER_BASE_EN,
@@ -130,6 +188,8 @@ export default function DictationScreen() {
   const [serverDraftURL, setServerDraftURL] = useState("http://127.0.0.1:4096")
   const [serverDraftRelayURL, setServerDraftRelayURL] = useState(DEFAULT_RELAY_URL)
   const [serverDraftRelaySecret, setServerDraftRelaySecret] = useState("")
+  const [scanOpen, setScanOpen] = useState(false)
+  const [camGranted, setCamGranted] = useState(false)
   const [servers, setServers] = useState<ServerItem[]>([
     {
       id: "srv-1",
@@ -178,6 +238,7 @@ export default function DictationScreen() {
   const foregroundMonitorAbortRef = useRef<AbortController | null>(null)
   const monitorJobRef = useRef<MonitorJob | null>(null)
   const previousPushTokenRef = useRef<string | null>(null)
+  const scanLockRef = useRef(false)
 
   const [recorder] = useState(() => new AudioRecorder())
 
@@ -913,7 +974,7 @@ export default function DictationScreen() {
   const menuRows =
     effectiveDropdownMode === "server" ? Math.max(servers.length, 1) : Math.max(activeServer?.sessions.length ?? 0, 1)
   const expandedRowsHeight = Math.min(menuRows, DROPDOWN_VISIBLE_ROWS) * 42
-  const addServerExtraHeight = effectiveDropdownMode === "server" ? (isAddingServer ? 142 : 38) : 8
+  const addServerExtraHeight = effectiveDropdownMode === "server" ? (isAddingServer ? 188 : 38) : 8
   const expandedHeaderHeight = 51 + 12 + expandedRowsHeight + addServerExtraHeight
 
   const animatedHeaderStyle = useAnimatedStyle(() => ({
@@ -996,6 +1057,12 @@ export default function DictationScreen() {
     if (!server) return
 
     const base = server.url.replace(/\/+$/, "")
+    console.log("[Server] refresh:start", {
+      id: server.id,
+      name: server.name,
+      base,
+      includeSessions,
+    })
 
     setServers((prev) =>
       prev.map((s) => {
@@ -1008,11 +1075,18 @@ export default function DictationScreen() {
     try {
       const healthRes = await fetch(`${base}/health`)
       const online = healthRes.ok
+      console.log("[Server] health", {
+        id: server.id,
+        base,
+        status: healthRes.status,
+        online,
+      })
 
       if (!online) {
         setServers((prev) =>
           prev.map((s) => (s.id === serverID ? { ...s, status: "offline", sessionsLoading: false, sessions: [] } : s)),
         )
+        console.log("[Server] refresh:offline", { id: server.id, base })
         return
       }
 
@@ -1020,6 +1094,7 @@ export default function DictationScreen() {
         setServers((prev) =>
           prev.map((s) => (s.id === serverID ? { ...s, status: "online", sessionsLoading: false } : s)),
         )
+        console.log("[Server] refresh:online", { id: server.id, base })
         return
       }
 
@@ -1039,10 +1114,15 @@ export default function DictationScreen() {
       setServers((prev) =>
         prev.map((s) => (s.id === serverID ? { ...s, status: "online", sessionsLoading: false, sessions } : s)),
       )
+      console.log("[Server] sessions", { id: server.id, count: sessions.length })
     } catch {
       setServers((prev) =>
         prev.map((s) => (s.id === serverID ? { ...s, status: "offline", sessionsLoading: false, sessions: [] } : s)),
       )
+      console.log("[Server] refresh:error", {
+        id: server.id,
+        base,
+      })
     }
   }, [])
 
@@ -1127,53 +1207,140 @@ export default function DictationScreen() {
     setServerDraftRelaySecret("")
   }, [])
 
+  const addServer = useCallback(
+    (serverURL: string, relayURL: string, relaySecretRaw: string) => {
+      const raw = serverURL.trim()
+      if (!raw) return false
+
+      const normalized = raw.startsWith("http://") || raw.startsWith("https://") ? raw : `http://${raw}`
+
+      const rawRelay = relayURL.trim()
+      const relayNormalizedRaw = rawRelay.length > 0 ? rawRelay : DEFAULT_RELAY_URL
+      const normalizedRelay =
+        relayNormalizedRaw.startsWith("http://") || relayNormalizedRaw.startsWith("https://")
+          ? relayNormalizedRaw
+          : `http://${relayNormalizedRaw}`
+
+      let parsed: URL
+      let relayParsed: URL
+      try {
+        parsed = new URL(normalized)
+        relayParsed = new URL(normalizedRelay)
+      } catch {
+        return false
+      }
+
+      const id = `srv-${Date.now()}`
+      const relaySecret = relaySecretRaw.trim()
+      const inferredName =
+        parsed.hostname === "127.0.0.1" || parsed.hostname === "localhost" ? "Local OpenCode" : parsed.hostname
+      const url = `${parsed.protocol}//${parsed.host}`
+      const relay = `${relayParsed.protocol}//${relayParsed.host}`
+      const existing = serversRef.current.find(
+        (item) => item.url === url && item.relayURL === relay && item.relaySecret.trim() === relaySecret,
+      )
+      if (existing) {
+        setActiveServerId(existing.id)
+        setActiveSessionId(null)
+        setIsAddingServer(false)
+        setServerDraftRelaySecret("")
+        setDropdownMode("none")
+        refreshServerStatusAndSessions(existing.id)
+        return true
+      }
+
+      setServers((prev) => [
+        ...prev,
+        {
+          id,
+          name: inferredName,
+          url,
+          relayURL: relay,
+          relaySecret,
+          status: "offline",
+          sessions: [],
+          sessionsLoading: false,
+        },
+      ])
+      setActiveServerId(id)
+      setActiveSessionId(null)
+      setIsAddingServer(false)
+      setServerDraftRelaySecret("")
+      setDropdownMode("none")
+      refreshServerStatusAndSessions(id)
+      return true
+    },
+    [refreshServerStatusAndSessions],
+  )
+
   const handleConfirmAddServer = useCallback(() => {
-    const raw = serverDraftURL.trim()
-    if (!raw) return
+    addServer(serverDraftURL, serverDraftRelayURL, serverDraftRelaySecret)
+  }, [addServer, serverDraftRelaySecret, serverDraftRelayURL, serverDraftURL])
 
-    const normalized = raw.startsWith("http://") || raw.startsWith("https://") ? raw : `http://${raw}`
-
-    const rawRelay = serverDraftRelayURL.trim()
-    const relayNormalizedRaw = rawRelay.length > 0 ? rawRelay : DEFAULT_RELAY_URL
-    const normalizedRelay =
-      relayNormalizedRaw.startsWith("http://") || relayNormalizedRaw.startsWith("https://")
-        ? relayNormalizedRaw
-        : `http://${relayNormalizedRaw}`
-
-    let parsed: URL
-    let relayParsed: URL
-    try {
-      parsed = new URL(normalized)
-      relayParsed = new URL(normalizedRelay)
-    } catch {
+  const handleStartScan = useCallback(async () => {
+    scanLockRef.current = false
+    const current =
+      camera ??
+      (await import("expo-camera")
+        .catch(() => null)
+        .then((mod) => {
+          if (!mod) return null
+          const next = {
+            CameraView: mod.CameraView,
+            requestCameraPermissionsAsync: mod.Camera.requestCameraPermissionsAsync,
+          }
+          setCamera(next)
+          return next
+        }))
+    if (!current) {
+      Alert.alert("Scanner unavailable", "This build does not include camera support. Reinstall the latest dev build.")
       return
     }
+    if (camGranted) {
+      setScanOpen(true)
+      return
+    }
+    const res = await current.requestCameraPermissionsAsync()
+    if (!res.granted) return
+    setCamGranted(true)
+    setScanOpen(true)
+  }, [camGranted, camera])
 
-    const id = `srv-${Date.now()}`
-    const relaySecret = serverDraftRelaySecret.trim()
-    const inferredName =
-      parsed.hostname === "127.0.0.1" || parsed.hostname === "localhost" ? "Local OpenCode" : parsed.hostname
+  const handleScan = useCallback(
+    (event: Scan) => {
+      if (scanLockRef.current) return
+      scanLockRef.current = true
+      const pair = parsePair(event.data)
+      if (!pair) {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {})
+        setTimeout(() => {
+          scanLockRef.current = false
+        }, 750)
+        return
+      }
 
-    setServers((prev) => [
-      ...prev,
-      {
-        id,
-        name: inferredName,
-        url: `${parsed.protocol}//${parsed.host}`,
-        relayURL: `${relayParsed.protocol}//${relayParsed.host}`,
-        relaySecret,
-        status: "offline",
-        sessions: [],
-        sessionsLoading: false,
-      },
-    ])
-    setActiveServerId(id)
-    setActiveSessionId(null)
-    setIsAddingServer(false)
-    setServerDraftRelaySecret("")
-    setDropdownMode("none")
-    refreshServerStatusAndSessions(id)
-  }, [refreshServerStatusAndSessions, serverDraftRelaySecret, serverDraftRelayURL, serverDraftURL])
+      const host = pickHost(pair.hosts)
+      if (!host) {
+        scanLockRef.current = false
+        return
+      }
+
+      const ok = addServer(host, pair.relayURL, pair.relaySecret)
+      if (!ok) {
+        scanLockRef.current = false
+        return
+      }
+
+      setScanOpen(false)
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {})
+    },
+    [addServer],
+  )
+
+  useEffect(() => {
+    if (scanOpen) return
+    scanLockRef.current = false
+  }, [scanOpen])
 
   useEffect(() => {
     if (!activeServerId) return
@@ -1192,18 +1359,46 @@ export default function DictationScreen() {
     if (!list.length) return
 
     const bundleId = Constants.expoConfig?.ios?.bundleIdentifier ?? "com.anomalyco.mobilevoice"
-    const apnsEnv = process.env.NODE_ENV === "production" ? "production" : "sandbox"
+    const apnsEnv = "production"
+    console.log("[Relay] env", {
+      dev: __DEV__,
+      node: process.env.NODE_ENV,
+      apnsEnv,
+    })
+    console.log("[Relay] register:batch", {
+      tokenSuffix: devicePushToken.slice(-8),
+      count: list.length,
+      apnsEnv,
+      bundleId,
+    })
 
     Promise.allSettled(
-      list.map((server) =>
-        registerRelayDevice({
-          relayBaseURL: server.relayURL,
-          secret: server.relaySecret.trim(),
-          deviceToken: devicePushToken,
-          bundleId,
-          apnsEnv,
-        }),
-      ),
+      list.map(async (server) => {
+        const secret = server.relaySecret.trim()
+        const relay = server.relayURL
+        console.log("[Relay] register:start", {
+          id: server.id,
+          relay,
+          tokenSuffix: devicePushToken.slice(-8),
+          secretLength: secret.length,
+        })
+        try {
+          await registerRelayDevice({
+            relayBaseURL: relay,
+            secret,
+            deviceToken: devicePushToken,
+            bundleId,
+            apnsEnv,
+          })
+          console.log("[Relay] register:ok", { id: server.id, relay })
+        } catch (err) {
+          console.log("[Relay] register:error", {
+            id: server.id,
+            relay,
+            error: err instanceof Error ? err.message : String(err),
+          })
+        }
+      }),
     ).catch(() => {})
   }, [devicePushToken, servers])
 
@@ -1216,15 +1411,37 @@ export default function DictationScreen() {
 
     const list = servers.filter((server) => server.relaySecret.trim().length > 0)
     if (!list.length) return
+    console.log("[Relay] unregister:batch", {
+      previousSuffix: previous.slice(-8),
+      nextSuffix: devicePushToken.slice(-8),
+      count: list.length,
+    })
 
     Promise.allSettled(
-      list.map((server) =>
-        unregisterRelayDevice({
-          relayBaseURL: server.relayURL,
-          secret: server.relaySecret.trim(),
-          deviceToken: previous,
-        }),
-      ),
+      list.map(async (server) => {
+        const secret = server.relaySecret.trim()
+        const relay = server.relayURL
+        console.log("[Relay] unregister:start", {
+          id: server.id,
+          relay,
+          tokenSuffix: previous.slice(-8),
+          secretLength: secret.length,
+        })
+        try {
+          await unregisterRelayDevice({
+            relayBaseURL: relay,
+            secret,
+            deviceToken: previous,
+          })
+          console.log("[Relay] unregister:ok", { id: server.id, relay })
+        } catch (err) {
+          console.log("[Relay] unregister:error", {
+            id: server.id,
+            relay,
+            error: err instanceof Error ? err.message : String(err),
+          })
+        }
+      }),
     ).catch(() => {})
   }, [devicePushToken, servers])
 
@@ -1335,6 +1552,9 @@ export default function DictationScreen() {
             {effectiveDropdownMode === "server" ? (
               isAddingServer ? (
                 <View style={styles.addServerComposer}>
+                  <Pressable onPress={() => void handleStartScan()} style={styles.scanButton}>
+                    <Text style={styles.scanButtonText}>Scan server QR</Text>
+                  </Pressable>
                   <TextInput
                     value={serverDraftURL}
                     onChangeText={setServerDraftURL}
@@ -1482,6 +1702,33 @@ export default function DictationScreen() {
           </Pressable>
         </Animated.View>
       </View>
+
+      <Modal
+        visible={scanOpen}
+        animationType="slide"
+        presentationStyle="formSheet"
+        onRequestClose={() => setScanOpen(false)}
+      >
+        <SafeAreaView style={styles.scanRoot}>
+          <View style={styles.scanTop}>
+            <Text style={styles.scanTitle}>Scan server QR</Text>
+            <Pressable onPress={() => setScanOpen(false)}>
+              <Text style={styles.scanClose}>Close</Text>
+            </Pressable>
+          </View>
+          {camGranted && camera ? (
+            <camera.CameraView
+              style={styles.scanCam}
+              barcodeScannerSettings={{ barcodeTypes: ["qr"] }}
+              onBarcodeScanned={handleScan}
+            />
+          ) : (
+            <View style={styles.scanEmpty}>
+              <Text style={styles.scanHint}>Camera permission is required to scan setup QR codes.</Text>
+            </View>
+          )}
+        </SafeAreaView>
+      </Modal>
     </SafeAreaView>
   )
 }
@@ -1635,6 +1882,21 @@ const styles = StyleSheet.create({
     marginTop: 8,
     paddingHorizontal: 4,
     gap: 8,
+  },
+  scanButton: {
+    height: 38,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "#2F4D84",
+    backgroundColor: "#142544",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  scanButtonText: {
+    color: "#A8C7FF",
+    fontSize: 14,
+    fontWeight: "700",
+    letterSpacing: 0.2,
   },
   addServerInput: {
     height: 38,
@@ -1828,6 +2090,44 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: "700",
     letterSpacing: 0.2,
+  },
+  scanRoot: {
+    flex: 1,
+    backgroundColor: "#101014",
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    gap: 12,
+  },
+  scanTop: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  scanTitle: {
+    color: "#E8EAF0",
+    fontSize: 18,
+    fontWeight: "700",
+  },
+  scanClose: {
+    color: "#8FA4CC",
+    fontSize: 15,
+    fontWeight: "600",
+  },
+  scanCam: {
+    flex: 1,
+    borderRadius: 18,
+    overflow: "hidden",
+  },
+  scanEmpty: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 24,
+  },
+  scanHint: {
+    color: "#A6ABBA",
+    fontSize: 14,
+    textAlign: "center",
   },
   sendSlot: {
     height: CONTROL_HEIGHT,

@@ -1,5 +1,5 @@
 import os from "node:os"
-import { Bus } from "@/bus"
+import { GlobalBus } from "@/bus/global"
 import { Log } from "@/util/log"
 
 type Type = "complete" | "permission" | "error"
@@ -183,20 +183,15 @@ export namespace PushRelay {
       hosts: list(input.hostname, input.port),
     }
 
-    let unsub: (() => void) | undefined
-    try {
-      unsub = Bus.subscribeAll((event) => {
-        const next = map(event)
-        if (!next) return
-        post(next)
-      })
-    } catch (error) {
-      log.warn("failed to subscribe", {
-        error: String(error),
-      })
-      return
+    const callback = (event: { payload: Event }) => {
+      const next = map(event.payload)
+      if (!next) return
+      post(next)
     }
-    if (!unsub) return
+    GlobalBus.on("event", callback)
+    const unsub = () => {
+      GlobalBus.off("event", callback)
+    }
 
     state = {
       relayURL,
