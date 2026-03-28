@@ -8,7 +8,7 @@
     "scheme": "mobilevoice",
     "userInterfaceStyle": "automatic",
     "ios": {
-      "icon": "./assets/expo.icon",
+      "icon": "./assets/images/icon.png",
       "bundleIdentifier": "com.anomalyco.mobilevoice",
       "infoPlist": {
         "NSMicrophoneUsageDescription": "This app needs microphone access for live speech-to-text dictation.",

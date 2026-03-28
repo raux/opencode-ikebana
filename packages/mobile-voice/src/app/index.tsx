@@ -5,7 +5,6 @@ import {
   View,
   Pressable,
   ScrollView,
-  TextInput,
   Modal,
   Alert,
   LayoutChangeEvent,
@@ -120,6 +119,11 @@ type Scan = {
   data: string
 }
 
+type Cam = {
+  CameraView: (typeof import("expo-camera"))["CameraView"]
+  requestCameraPermissionsAsync: (typeof import("expo-camera"))["Camera"]["requestCameraPermissionsAsync"]
+}
+
 function parsePair(input: string): Pair | undefined {
   try {
     const data = JSON.parse(input)
@@ -158,14 +162,7 @@ function pickHost(list: string[]): string | undefined {
 }
 
 export default function DictationScreen() {
-  const [camera, setCamera] = useState<{
-    CameraView: React.ComponentType<{
-      style?: unknown
-      barcodeScannerSettings?: { barcodeTypes?: string[] }
-      onBarcodeScanned?: (event: Scan) => void
-    }>
-    requestCameraPermissionsAsync: () => Promise<{ granted: boolean | undefined }>
-  } | null>(null)
+  const [camera, setCamera] = useState<Cam | null>(null)
   const [modelReset, setModelReset] = useState(false)
   const model = useSpeechToText({
     model: WHISPER_BASE_EN,
@@ -184,10 +181,6 @@ export default function DictationScreen() {
   const [appState, setAppState] = useState<AppStateStatus>(AppState.currentState)
   const [dropdownMode, setDropdownMode] = useState<DropdownMode>("none")
   const [dropdownRenderMode, setDropdownRenderMode] = useState<Exclude<DropdownMode, "none">>("server")
-  const [isAddingServer, setIsAddingServer] = useState(false)
-  const [serverDraftURL, setServerDraftURL] = useState("http://127.0.0.1:4096")
-  const [serverDraftRelayURL, setServerDraftRelayURL] = useState(DEFAULT_RELAY_URL)
-  const [serverDraftRelaySecret, setServerDraftRelaySecret] = useState("")
   const [scanOpen, setScanOpen] = useState(false)
   const [camGranted, setCamGranted] = useState(false)
   const [servers, setServers] = useState<ServerItem[]>([
@@ -974,7 +967,7 @@ export default function DictationScreen() {
   const menuRows =
     effectiveDropdownMode === "server" ? Math.max(servers.length, 1) : Math.max(activeServer?.sessions.length ?? 0, 1)
   const expandedRowsHeight = Math.min(menuRows, DROPDOWN_VISIBLE_ROWS) * 42
-  const addServerExtraHeight = effectiveDropdownMode === "server" ? (isAddingServer ? 188 : 38) : 8
+  const addServerExtraHeight = effectiveDropdownMode === "server" ? 38 : 8
   const expandedHeaderHeight = 51 + 12 + expandedRowsHeight + addServerExtraHeight
 
   const animatedHeaderStyle = useAnimatedStyle(() => ({
@@ -1135,7 +1128,6 @@ export default function DictationScreen() {
 
   const toggleServerMenu = useCallback(() => {
     Haptics.selectionAsync().catch(() => {})
-    setIsAddingServer(false)
     setDropdownMode((prev) => {
       const next = prev === "server" ? "none" : "server"
       if (next === "server") {
@@ -1195,18 +1187,6 @@ export default function DictationScreen() {
     [activeServerId, devicePushToken],
   )
 
-  const handleStartAddServer = useCallback(() => {
-    setIsAddingServer(true)
-    setServerDraftRelayURL(DEFAULT_RELAY_URL)
-    setServerDraftRelaySecret("")
-  }, [])
-
-  const handleCancelAddServer = useCallback(() => {
-    setIsAddingServer(false)
-    setServerDraftRelayURL(DEFAULT_RELAY_URL)
-    setServerDraftRelaySecret("")
-  }, [])
-
   const addServer = useCallback(
     (serverURL: string, relayURL: string, relaySecretRaw: string) => {
       const raw = serverURL.trim()
@@ -1242,8 +1222,6 @@ export default function DictationScreen() {
       if (existing) {
         setActiveServerId(existing.id)
         setActiveSessionId(null)
-        setIsAddingServer(false)
-        setServerDraftRelaySecret("")
         setDropdownMode("none")
         refreshServerStatusAndSessions(existing.id)
         return true
@@ -1264,18 +1242,12 @@ export default function DictationScreen() {
       ])
       setActiveServerId(id)
       setActiveSessionId(null)
-      setIsAddingServer(false)
-      setServerDraftRelaySecret("")
       setDropdownMode("none")
       refreshServerStatusAndSessions(id)
       return true
     },
     [refreshServerStatusAndSessions],
   )
-
-  const handleConfirmAddServer = useCallback(() => {
-    addServer(serverDraftURL, serverDraftRelayURL, serverDraftRelaySecret)
-  }, [addServer, serverDraftRelaySecret, serverDraftRelayURL, serverDraftURL])
 
   const handleStartScan = useCallback(async () => {
     scanLockRef.current = false
@@ -1550,55 +1522,9 @@ export default function DictationScreen() {
             </ScrollView>
 
             {effectiveDropdownMode === "server" ? (
-              isAddingServer ? (
-                <View style={styles.addServerComposer}>
-                  <Pressable onPress={() => void handleStartScan()} style={styles.scanButton}>
-                    <Text style={styles.scanButtonText}>Scan server QR</Text>
-                  </Pressable>
-                  <TextInput
-                    value={serverDraftURL}
-                    onChangeText={setServerDraftURL}
-                    autoCapitalize="none"
-                    autoCorrect={false}
-                    keyboardType="url"
-                    placeholder="https://your-opencode-server"
-                    placeholderTextColor="#6F7686"
-                    style={styles.addServerInput}
-                  />
-                  <TextInput
-                    value={serverDraftRelayURL}
-                    onChangeText={setServerDraftRelayURL}
-                    autoCapitalize="none"
-                    autoCorrect={false}
-                    keyboardType="url"
-                    placeholder="https://your-relay-server"
-                    placeholderTextColor="#6F7686"
-                    style={styles.addServerInput}
-                  />
-                  <TextInput
-                    value={serverDraftRelaySecret}
-                    onChangeText={setServerDraftRelaySecret}
-                    autoCapitalize="none"
-                    autoCorrect={false}
-                    placeholder="Relay shared secret"
-                    placeholderTextColor="#6F7686"
-                    secureTextEntry
-                    style={styles.addServerInput}
-                  />
-                  <View style={styles.addServerActions}>
-                    <Pressable onPress={handleCancelAddServer}>
-                      <Text style={styles.addServerCancelText}>Cancel</Text>
-                    </Pressable>
-                    <Pressable onPress={handleConfirmAddServer}>
-                      <Text style={styles.addServerConfirmText}>Add</Text>
-                    </Pressable>
-                  </View>
-                </View>
-              ) : (
-                <Pressable onPress={handleStartAddServer} style={styles.addServerButton}>
-                  <Text style={styles.addServerButtonText}>+ Add server</Text>
-                </Pressable>
-              )
+              <Pressable onPress={() => void handleStartScan()} style={styles.addServerButton}>
+                <Text style={styles.addServerButtonText}>Add server by scanning QR code</Text>
+              </Pressable>
             ) : null}
           </Animated.View>
         </Animated.View>
@@ -1877,52 +1803,6 @@ const styles = StyleSheet.create({
     color: "#B8BDC9",
     fontSize: 16,
     fontWeight: "600",
-  },
-  addServerComposer: {
-    marginTop: 8,
-    paddingHorizontal: 4,
-    gap: 8,
-  },
-  scanButton: {
-    height: 38,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: "#2F4D84",
-    backgroundColor: "#142544",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  scanButtonText: {
-    color: "#A8C7FF",
-    fontSize: 14,
-    fontWeight: "700",
-    letterSpacing: 0.2,
-  },
-  addServerInput: {
-    height: 38,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: "#2A2A33",
-    backgroundColor: "#151515",
-    color: "#D6DAE4",
-    paddingHorizontal: 12,
-    fontSize: 14,
-  },
-  addServerActions: {
-    flexDirection: "row",
-    justifyContent: "flex-end",
-    gap: 16,
-    paddingHorizontal: 4,
-  },
-  addServerCancelText: {
-    color: "#8C93A3",
-    fontSize: 14,
-    fontWeight: "600",
-  },
-  addServerConfirmText: {
-    color: "#FF6A78",
-    fontSize: 14,
-    fontWeight: "700",
   },
   statusLeft: {
     flexDirection: "row",
