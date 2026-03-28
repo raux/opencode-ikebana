@@ -9,6 +9,20 @@ import { hash } from "./hash"
 import { delivery_log, device_registration } from "./schema.sql"
 import { setup } from "./setup"
 
+function bad(input?: string) {
+  if (!input) return false
+  return input.includes("BadEnvironmentKeyInToken")
+}
+
+function flip(input: "sandbox" | "production") {
+  if (input === "sandbox") return "production"
+  return "sandbox"
+}
+
+function tail(input: string) {
+  return input.slice(-8)
+}
+
 const reg = z.object({
   secret: z.string().min(1),
   deviceToken: z.string().min(1),
@@ -163,6 +177,12 @@ app.post("/v1/device/register", async (c) => {
     updated_at: now,
   }
 
+  console.log("[relay] register", {
+    token: tail(row.device_token),
+    env: row.apns_env,
+    bundle: row.bundle_id,
+  })
+
   await db
     .insert(device_registration)
     .values(row)
@@ -189,6 +209,10 @@ app.post("/v1/device/unregister", async (c) => {
       400,
     )
   }
+
+  console.log("[relay] unregister", {
+    token: tail(check.data.deviceToken),
+  })
 
   await db
     .delete(device_registration)
@@ -217,6 +241,11 @@ app.post("/v1/event", async (c) => {
 
   const key = hash(check.data.secret)
   const list = await db.select().from(device_registration).where(eq(device_registration.secret_hash, key))
+  console.log("[relay] event", {
+    type: check.data.eventType,
+    session: check.data.sessionID,
+    devices: list.length,
+  })
   if (!list.length) {
     return c.json({
       ok: true,
@@ -226,19 +255,62 @@ app.post("/v1/event", async (c) => {
   }
 
   const out = await Promise.all(
-    list.map((row) =>
-      send({
+    list.map(async (row) => {
+      const env = row.apns_env === "sandbox" ? "sandbox" : "production"
+      const payload = {
         token: row.device_token,
         bundle: row.bundle_id,
-        env: row.apns_env === "sandbox" ? "sandbox" : "production",
         title: check.data.title ?? title(check.data.eventType),
         body: check.data.body ?? body(check.data.eventType),
         data: {
           eventType: check.data.eventType,
           sessionID: check.data.sessionID,
         },
-      }),
-    ),
+      }
+      const first = await send({ ...payload, env })
+      if (first.ok || !bad(first.error)) {
+        if (!first.ok) {
+          console.log("[relay] send:error", {
+            token: tail(row.device_token),
+            env,
+            error: first.error,
+          })
+        }
+        return first
+      }
+
+      const alt = flip(env)
+      console.log("[relay] send:retry-env", {
+        token: tail(row.device_token),
+        from: env,
+        to: alt,
+      })
+      const second = await send({ ...payload, env: alt })
+      if (!second.ok) {
+        console.log("[relay] send:error", {
+          token: tail(row.device_token),
+          env: alt,
+          error: second.error,
+        })
+        return second
+      }
+
+      await db
+        .update(device_registration)
+        .set({ apns_env: alt, updated_at: Date.now() })
+        .where(
+          and(
+            eq(device_registration.secret_hash, row.secret_hash),
+            eq(device_registration.device_token, row.device_token),
+          ),
+        )
+
+      console.log("[relay] send:env-updated", {
+        token: tail(row.device_token),
+        env: alt,
+      })
+      return second
+    }),
   )
 
   const now = Date.now()
@@ -255,6 +327,12 @@ app.post("/v1/event", async (c) => {
   )
 
   const sent = out.filter((item) => item.ok).length
+  console.log("[relay] event:done", {
+    type: check.data.eventType,
+    session: check.data.sessionID,
+    sent,
+    failed: out.length - sent,
+  })
   return c.json({
     ok: true,
     sent,
