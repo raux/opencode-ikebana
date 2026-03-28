@@ -1,14 +1,20 @@
 import { z } from "zod"
 
+const bad = new Set(["undefined", "null"])
+const txt = z
+  .string()
+  .transform((input) => input.trim())
+  .refine((input) => input.length > 0 && !bad.has(input.toLowerCase()))
+
 const schema = z.object({
   PORT: z.coerce.number().int().positive().default(8787),
-  DATABASE_HOST: z.string().min(1),
-  DATABASE_USERNAME: z.string().min(1),
-  DATABASE_PASSWORD: z.string().min(1),
-  APNS_TEAM_ID: z.string().min(1),
-  APNS_KEY_ID: z.string().min(1),
-  APNS_PRIVATE_KEY: z.string().min(1),
-  APNS_DEFAULT_BUNDLE_ID: z.string().min(1),
+  DATABASE_HOST: txt,
+  DATABASE_USERNAME: txt,
+  DATABASE_PASSWORD: txt,
+  APNS_TEAM_ID: txt,
+  APNS_KEY_ID: txt,
+  APNS_PRIVATE_KEY: txt,
+  APNS_DEFAULT_BUNDLE_ID: txt,
 })
 
 const req = [
