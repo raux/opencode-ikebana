@@ -272,4 +272,4 @@ if (import.meta.main) {
   console.log(`apn-relay listening on http://0.0.0.0:${env.PORT}`)
 }
 
-export default app
+export { app }
