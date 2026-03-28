@@ -31,7 +31,7 @@ export const ServeCommand = cmd({
     const relayURL = (
       args["relay-url"] ??
       process.env.OPENCODE_EXPERIMENTAL_PUSH_RELAY_URL ??
-      "https://relay.opencode.ai"
+      "https://apn.dev.opencode.ai"
     ).trim()
     const relaySecret = (args["relay-secret"] ?? process.env.OPENCODE_EXPERIMENTAL_PUSH_RELAY_SECRET ?? "").trim()
     if (relayURL && relaySecret) {

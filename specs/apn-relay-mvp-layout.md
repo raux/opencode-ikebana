@@ -142,7 +142,7 @@ This is the minimum setup to get reliable mobile background notifications workin
 - Add serve options:
   - `--relay-url`
   - `--relay-secret` (optional; generate random if missing)
-- Default relay URL: `https://relay.opencode.ai`
+- Default relay URL: `https://apn.dev.opencode.ai`
 - If relay is configured, print QR payload in terminal:
   - `hosts` (local LAN and configured host, including Tailscale IP when present)
   - `relayURL`

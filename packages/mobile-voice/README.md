@@ -22,7 +22,7 @@ When adding a server, provide:
 - APN relay URL
 - Relay shared secret
 
-Default APN relay URL: `https://relay.opencode.ai`
+Default APN relay URL: `https://apn.dev.opencode.ai`
 
 The app uses these values to:
 

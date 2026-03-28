@@ -27,6 +27,7 @@ import { StatusBar } from "expo-status-bar"
 import * as Haptics from "expo-haptics"
 import { useAudioPlayer } from "expo-audio"
 import { useSpeechToText, WHISPER_BASE_EN } from "react-native-executorch"
+import { ExpoResourceFetcher } from "react-native-executorch-expo-resource-fetcher"
 import { AudioManager, AudioRecorder } from "react-native-audio-api"
 import * as Notifications from "expo-notifications"
 import Constants from "expo-constants"
@@ -56,7 +57,7 @@ const WAVEFORM_CELL_GAP = 2
 const DROPDOWN_VISIBLE_ROWS = 6
 // If the press duration is shorter than this, treat it as a tap (toggle)
 const TAP_THRESHOLD_MS = 300
-const DEFAULT_RELAY_URL = "https://relay.opencode.ai"
+const DEFAULT_RELAY_URL = "https://apn.dev.opencode.ai"
 
 type ServerItem = {
   id: string
@@ -107,8 +108,10 @@ function formatSessionUpdated(updatedMs: number): string {
 type DropdownMode = "none" | "server" | "session"
 
 export default function DictationScreen() {
+  const [modelReset, setModelReset] = useState(false)
   const model = useSpeechToText({
     model: WHISPER_BASE_EN,
+    preventLoad: modelReset,
   })
 
   const [transcribedText, setTranscribedText] = useState("")
@@ -497,6 +500,35 @@ export default function DictationScreen() {
     setIsSending(false)
   }, [clearIconRotation, sendOutProgress, stopRecording])
 
+  const handleDeleteModel = useCallback(async () => {
+    if (modelReset) return
+
+    if (isRecordingRef.current) {
+      stopRecording()
+    }
+
+    setModelReset(true)
+    accumulatedRef.current = ""
+    baseTextRef.current = ""
+    setTranscribedText("")
+    setHasCompletedSession(false)
+    const cleared = new Array(waveformLevelsRef.current.length).fill(0)
+    waveformLevelsRef.current = cleared
+    setWaveformLevels(cleared)
+    setWaveformTick(Date.now())
+    sendOutProgress.value = 0
+    setIsSending(false)
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {})
+
+    try {
+      await ExpoResourceFetcher.deleteResources(WHISPER_BASE_EN.modelSource, WHISPER_BASE_EN.tokenizerSource)
+    } catch (err) {
+      console.error("Failed to delete model resources:", err)
+    }
+
+    setModelReset(false)
+  }, [modelReset, sendOutProgress, stopRecording])
+
   const resetTranscriptState = useCallback(() => {
     if (isRecordingRef.current) {
       stopRecording()
@@ -759,6 +791,9 @@ export default function DictationScreen() {
   }, [stopRecording])
 
   const modelLoading = !model.isReady
+  const prog = model.downloadProgress > 1 ? model.downloadProgress / 100 : model.downloadProgress
+  const load = Math.max(0, Math.min(1, Number.isFinite(prog) ? prog : 0))
+  const pct = Math.round(load * 100)
   const hasTranscript = transcribedText.trim().length > 0
   const shouldShowSend = hasCompletedSession && hasTranscript
   const activeServer = servers.find((s) => s.id === activeServerId) ?? null
@@ -1353,6 +1388,16 @@ export default function DictationScreen() {
       <View style={styles.transcriptionArea}>
         <View style={styles.transcriptionTopActions} pointerEvents="box-none">
           <Pressable
+            onPress={() => {
+              void handleDeleteModel()
+            }}
+            style={({ pressed }) => [styles.clearButton, pressed && styles.clearButtonPressed]}
+            hitSlop={8}
+            disabled={modelLoading || modelReset}
+          >
+            <Text style={styles.modelDeleteIcon}>DL</Text>
+          </Pressable>
+          <Pressable
             onPress={handleClearTranscript}
             style={({ pressed }) => [styles.clearButton, pressed && styles.clearButtonPressed]}
             hitSlop={8}
@@ -1403,11 +1448,22 @@ export default function DictationScreen() {
           onPressIn={handlePressIn}
           onPressOut={handlePressOut}
           disabled={!permissionGranted || modelLoading}
-          style={[styles.recordPressable, (!permissionGranted || modelLoading) && styles.recordButtonDisabled]}
+          style={[styles.recordPressable, !permissionGranted && styles.recordButtonDisabled]}
         >
           <View style={styles.recordButton}>
-            <Animated.View style={[styles.recordBorder, animatedBorderStyle]} pointerEvents="none" />
-            <Animated.View style={[styles.recordDot, animatedDotStyle]} />
+            {modelLoading ? (
+              <>
+                <View style={[styles.loadFill, { width: `${Math.max(pct, 3)}%` }]} />
+                <View style={styles.loadOverlay} pointerEvents="none">
+                  <Text style={styles.loadText}>{`Downloading model ${pct}%`}</Text>
+                </View>
+              </>
+            ) : (
+              <>
+                <Animated.View style={[styles.recordBorder, animatedBorderStyle]} pointerEvents="none" />
+                <Animated.View style={[styles.recordDot, animatedDotStyle]} />
+              </>
+            )}
           </View>
         </Pressable>
 
@@ -1673,8 +1729,17 @@ const styles = StyleSheet.create({
   transcriptionTopActions: {
     position: "absolute",
     top: 10,
+    left: 10,
     right: 10,
     zIndex: 4,
+    flexDirection: "row",
+    justifyContent: "space-between",
+  },
+  modelDeleteIcon: {
+    color: "#8FB4FF",
+    fontSize: 14,
+    fontWeight: "800",
+    letterSpacing: 0.6,
   },
   monitorBadge: {
     alignSelf: "flex-start",
@@ -1744,6 +1809,25 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     width: "100%",
     overflow: "hidden",
+  },
+  loadFill: {
+    position: "absolute",
+    left: 0,
+    top: 0,
+    bottom: 0,
+    backgroundColor: "#FF5B47",
+  },
+  loadOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 18,
+  },
+  loadText: {
+    color: "#FFF6F4",
+    fontSize: 14,
+    fontWeight: "700",
+    letterSpacing: 0.2,
   },
   sendSlot: {
     height: CONTROL_HEIGHT,
