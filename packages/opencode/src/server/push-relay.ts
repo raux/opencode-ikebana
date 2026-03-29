@@ -8,6 +8,7 @@ type Type = "complete" | "permission" | "error"
 
 type Pair = {
   v: 1
+  serverID?: string
   relayURL: string
   relaySecret: string
   hosts: string[]
@@ -60,6 +61,10 @@ function norm(input: string) {
 function secretHash(input: string) {
   if (!input) return "none"
   return `${createHash("sha256").update(input).digest("hex").slice(0, 12)}...`
+}
+
+function serverID(input: { relayURL: string; relaySecret: string }) {
+  return createHash("sha256").update(`${input.relayURL}|${input.relaySecret}`).digest("hex").slice(0, 16)
 }
 
 /**
@@ -261,6 +266,7 @@ async function post(input: { type: Type; sessionID: string }) {
   const content = await notify(input)
 
   console.log("[ APN RELAY ] posting event", {
+    serverID: next.pair.serverID,
     relayURL: next.relayURL,
     secretHash: secretHash(next.relaySecret),
     type: input.type,
@@ -269,6 +275,7 @@ async function post(input: { type: Type; sessionID: string }) {
   })
 
   log.info("[ APN RELAY ] posting event", {
+    serverID: next.pair.serverID,
     relayURL: next.relayURL,
     secretHash: secretHash(next.relaySecret),
     type: input.type,
@@ -283,6 +290,7 @@ async function post(input: { type: Type; sessionID: string }) {
     },
     body: JSON.stringify({
       secret: next.relaySecret,
+      serverID: next.pair.serverID,
       eventType: input.type,
       sessionID: input.sessionID,
       title: content.title,
@@ -293,6 +301,7 @@ async function post(input: { type: Type; sessionID: string }) {
       if (res.ok) {
         console.log("[ APN RELAY ] relay accepted event", {
           status: res.status,
+          serverID: next.pair.serverID,
           secretHash: secretHash(next.relaySecret),
           type: input.type,
           sessionID: input.sessionID,
@@ -301,6 +310,7 @@ async function post(input: { type: Type; sessionID: string }) {
 
         log.info("[ APN RELAY ] relay accepted event", {
           status: res.status,
+          serverID: next.pair.serverID,
           secretHash: secretHash(next.relaySecret),
           type: input.type,
           sessionID: input.sessionID,
@@ -340,6 +350,7 @@ export namespace PushRelay {
 
     const pair: Pair = {
       v: 1,
+      serverID: serverID({ relayURL, relaySecret }),
       relayURL,
       relaySecret,
       hosts: list(input.hostname, input.port),

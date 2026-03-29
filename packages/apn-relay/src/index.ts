@@ -50,6 +50,7 @@ const unreg = z.object({
 
 const evt = z.object({
   secret: z.string().min(1),
+  serverID: z.string().min(1).optional(),
   eventType: z.enum(["complete", "permission", "error"]),
   sessionID: z.string().min(1),
   title: z.string().min(1).optional(),
@@ -325,6 +326,7 @@ app.post("/v1/event", async (c) => {
   const list = await db.select().from(device_registration).where(eq(device_registration.secret_hash, key))
   console.log("[relay] event", {
     type: check.data.eventType,
+    serverID: check.data.serverID,
     session: check.data.sessionID,
     secretHash: `${key.slice(0, 12)}...`,
     devices: list.length,
@@ -333,6 +335,7 @@ app.post("/v1/event", async (c) => {
     const [total] = await db.select({ value: sql<number>`count(*)` }).from(device_registration)
     console.log("[relay] event:no-matching-devices", {
       type: check.data.eventType,
+      serverID: check.data.serverID,
       session: check.data.sessionID,
       secretHash: `${key.slice(0, 12)}...`,
       totalDevices: Number(total?.value ?? 0),
@@ -354,6 +357,7 @@ app.post("/v1/event", async (c) => {
         title: check.data.title ?? title(check.data.eventType),
         body: check.data.body ?? body(check.data.eventType),
         data: {
+          serverID: check.data.serverID,
           eventType: check.data.eventType,
           sessionID: check.data.sessionID,
         },
