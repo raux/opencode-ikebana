@@ -23,6 +23,19 @@ function tail(input: string) {
   return input.slice(-8)
 }
 
+function esc(input: unknown) {
+  return String(input ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;")
+}
+
+function fmt(input: number) {
+  return new Date(input).toISOString()
+}
+
 const reg = z.object({
   secret: z.string().min(1),
   deviceToken: z.string().min(1),
@@ -90,6 +103,16 @@ app.get("/health", async (c) => {
 app.get("/", async (c) => {
   const [a] = await db.select({ value: sql<number>`count(*)` }).from(device_registration)
   const [b] = await db.select({ value: sql<number>`count(*)` }).from(delivery_log)
+  const devices = await db.select().from(device_registration).orderBy(desc(device_registration.updated_at)).limit(100)
+  const byBundle = await db
+    .select({
+      bundle: device_registration.bundle_id,
+      env: device_registration.apns_env,
+      value: sql<number>`count(*)`,
+    })
+    .from(device_registration)
+    .groupBy(device_registration.bundle_id, device_registration.apns_env)
+    .orderBy(desc(sql<number>`count(*)`))
   const rows = await db.select().from(delivery_log).orderBy(desc(delivery_log.created_at)).limit(20)
 
   const html = `<!doctype html>
@@ -101,9 +124,11 @@ app.get("/", async (c) => {
     <style>
       body { font-family: ui-sans-serif, system-ui, sans-serif; margin: 24px; color: #111827; }
       h1 { margin: 0 0 12px 0; }
+      h2 { margin: 22px 0 10px 0; font-size: 16px; }
       .stats { display: flex; gap: 16px; margin: 0 0 18px 0; }
       .card { border: 1px solid #e5e7eb; border-radius: 8px; padding: 10px 12px; min-width: 160px; }
       .muted { color: #6b7280; font-size: 12px; }
+      .small { font-size: 11px; color: #6b7280; }
       table { border-collapse: collapse; width: 100%; }
       th, td { border: 1px solid #e5e7eb; text-align: left; padding: 8px; font-size: 12px; }
       th { background: #f9fafb; }
@@ -122,6 +147,64 @@ app.get("/", async (c) => {
         <div>${Number(b?.value ?? 0)}</div>
       </div>
     </div>
+    <h2>Registered devices</h2>
+    <p class="small">Most recent 100 registrations. Token values are masked to suffix only.</p>
+    <table>
+      <thead>
+        <tr>
+          <th>updated</th>
+          <th>created</th>
+          <th>token suffix</th>
+          <th>env</th>
+          <th>bundle</th>
+          <th>secret hash</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${
+          devices.length
+            ? devices
+                .map(
+                  (row) => `<tr>
+          <td>${esc(fmt(row.updated_at))}</td>
+          <td>${esc(fmt(row.created_at))}</td>
+          <td>${esc(tail(row.device_token))}</td>
+          <td>${esc(row.apns_env)}</td>
+          <td>${esc(row.bundle_id)}</td>
+          <td>${esc(`${row.secret_hash.slice(0, 12)}…`)}</td>
+        </tr>`,
+                )
+                .join("")
+            : `<tr><td colspan="6" class="muted">No devices registered.</td></tr>`
+        }
+      </tbody>
+    </table>
+    <h2>Bundle breakdown</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>bundle</th>
+          <th>env</th>
+          <th>count</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${
+          byBundle.length
+            ? byBundle
+                .map(
+                  (row) => `<tr>
+          <td>${esc(row.bundle)}</td>
+          <td>${esc(row.env)}</td>
+          <td>${esc(Number(row.value ?? 0))}</td>
+        </tr>`,
+                )
+                .join("")
+            : `<tr><td colspan="3" class="muted">No device data.</td></tr>`
+        }
+      </tbody>
+    </table>
+    <h2>Recent deliveries</h2>
     <table>
       <thead>
         <tr>
@@ -136,11 +219,11 @@ app.get("/", async (c) => {
         ${rows
           .map(
             (row) => `<tr>
-          <td>${new Date(row.created_at).toISOString()}</td>
-          <td>${row.event_type}</td>
-          <td>${row.session_id}</td>
-          <td>${row.status}</td>
-          <td>${row.error ?? ""}</td>
+          <td>${esc(fmt(row.created_at))}</td>
+          <td>${esc(row.event_type)}</td>
+          <td>${esc(row.session_id)}</td>
+          <td>${esc(row.status)}</td>
+          <td>${esc(row.error ?? "")}</td>
         </tr>`,
           )
           .join("")}

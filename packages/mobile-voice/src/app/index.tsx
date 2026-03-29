@@ -24,7 +24,7 @@ import Animated, {
   interpolate,
   Extrapolation,
 } from "react-native-reanimated"
-import { SafeAreaView } from "react-native-safe-area-context"
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context"
 import { StatusBar } from "expo-status-bar"
 import { SymbolView } from "expo-symbols"
 import * as Haptics from "expo-haptics"
@@ -63,6 +63,7 @@ const TAP_THRESHOLD_MS = 300
 const DEFAULT_RELAY_URL = "https://apn.dev.opencode.ai"
 const SERVER_STATE_FILE = `${FileSystem.documentDirectory}mobile-voice-servers.json`
 const WHISPER_SETTINGS_FILE = `${FileSystem.documentDirectory}mobile-voice-whisper-settings.json`
+const ONBOARDING_STATE_FILE = `${FileSystem.documentDirectory}mobile-voice-onboarding.json`
 const WHISPER_MODELS_DIR = `${FileSystem.documentDirectory}whisper-models`
 const WHISPER_REPO = "https://huggingface.co/ggerganov/whisper.cpp/resolve/main"
 const WHISPER_MODELS = [
@@ -103,7 +104,8 @@ const WHISPER_MODELS = [
 
 type WhisperModelID = (typeof WHISPER_MODELS)[number]
 type TranscriptionMode = "bulk" | "realtime"
-const DEFAULT_WHISPER_MODEL: WhisperModelID = "ggml-medium.bin"
+type PermissionPromptState = "idle" | "pending" | "granted" | "denied"
+const DEFAULT_WHISPER_MODEL: WhisperModelID = "ggml-small-q8_0.bin"
 const DEFAULT_TRANSCRIPTION_MODE: TranscriptionMode = "bulk"
 
 const WHISPER_MODEL_LABELS: Record<WhisperModelID, string> = {
@@ -322,9 +324,13 @@ type WhisperSavedState = {
   mode: TranscriptionMode
 }
 
+type OnboardingSavedState = {
+  completed: boolean
+}
+
 type Cam = {
   CameraView: (typeof import("expo-camera"))["CameraView"]
-  requestCameraPermissionsAsync: (typeof import("expo-camera"))["Camera"]["requestCameraPermissionsAsync"]
+  requestCameraPermissionsAsync: () => Promise<{ granted: boolean }>
 }
 
 function parsePair(input: string): Pair | undefined {
@@ -392,6 +398,16 @@ function serverBases(input: string) {
   return [...new Set(list)]
 }
 
+function looksLikeLocalHost(hostname: string): boolean {
+  return (
+    hostname === "localhost" ||
+    hostname.endsWith(".local") ||
+    hostname.startsWith("10.") ||
+    hostname.startsWith("192.168.") ||
+    /^172\.(1[6-9]|2\d|3[0-1])\./.test(hostname)
+  )
+}
+
 function toSaved(servers: ServerItem[], activeServerId: string | null, activeSessionId: string | null): SavedState {
   return {
     servers: servers.map((item) => ({
@@ -431,8 +447,15 @@ function fromSaved(input: SavedState): {
 }
 
 export default function DictationScreen() {
+  const insets = useSafeAreaInsets()
   const [camera, setCamera] = useState<Cam | null>(null)
   const [defaultWhisperModel, setDefaultWhisperModel] = useState<WhisperModelID>(DEFAULT_WHISPER_MODEL)
+  const [onboardingReady, setOnboardingReady] = useState(false)
+  const [onboardingComplete, setOnboardingComplete] = useState(false)
+  const [onboardingStep, setOnboardingStep] = useState(0)
+  const [microphonePermissionState, setMicrophonePermissionState] = useState<PermissionPromptState>("idle")
+  const [notificationPermissionState, setNotificationPermissionState] = useState<PermissionPromptState>("idle")
+  const [localNetworkPermissionState, setLocalNetworkPermissionState] = useState<PermissionPromptState>("idle")
   const [activeWhisperModel, setActiveWhisperModel] = useState<WhisperModelID | null>(null)
   const [installedWhisperModels, setInstalledWhisperModels] = useState<WhisperModelID[]>([])
   const [whisperSettingsOpen, setWhisperSettingsOpen] = useState(false)
@@ -522,6 +545,52 @@ export default function DictationScreen() {
   }, [])
 
   useEffect(() => {
+    let mounted = true
+
+    ;(async () => {
+      let complete = false
+
+      try {
+        const data = await FileSystem.readAsStringAsync(ONBOARDING_STATE_FILE)
+        if (data) {
+          const parsed = JSON.parse(data) as Partial<OnboardingSavedState>
+          complete = Boolean(parsed.completed)
+        }
+      } catch {
+        // No onboarding state file yet.
+      }
+
+      if (!complete) {
+        try {
+          const [serverInfo, whisperInfo] = await Promise.all([
+            FileSystem.getInfoAsync(SERVER_STATE_FILE),
+            FileSystem.getInfoAsync(WHISPER_SETTINGS_FILE),
+          ])
+
+          if (serverInfo.exists || whisperInfo.exists) {
+            complete = true
+          }
+        } catch {
+          // Keep first-install behavior if metadata check fails.
+        }
+
+        if (complete) {
+          FileSystem.writeAsStringAsync(ONBOARDING_STATE_FILE, JSON.stringify({ completed: true })).catch(() => {})
+        }
+      }
+
+      if (mounted) {
+        setOnboardingComplete(complete)
+        setOnboardingReady(true)
+      }
+    })()
+
+    return () => {
+      mounted = false
+    }
+  }, [])
+
+  useEffect(() => {
     if (!restoredRef.current) return
     const payload = toSaved(servers, activeServerId, activeSessionId)
     FileSystem.writeAsStringAsync(SERVER_STATE_FILE, JSON.stringify(payload)).catch(() => {})
@@ -574,7 +643,19 @@ export default function DictationScreen() {
     }
   }, [stopWaveformPulse])
 
-  // Set up audio session and request permissions on mount
+  const ensureAudioInputRoute = useCallback(async () => {
+    try {
+      const devices = await AudioManager.getDevicesInfo()
+      if (devices.currentInputs.length === 0 && devices.availableInputs.length > 0) {
+        const pick = devices.availableInputs[0]
+        await AudioManager.setInputDevice(pick.id)
+      }
+    } catch {
+      // Input route setup is best-effort.
+    }
+  }, [])
+
+  // Set up audio session and check microphone permissions on mount.
   useEffect(() => {
     ;(async () => {
       try {
@@ -584,37 +665,21 @@ export default function DictationScreen() {
           iosOptions: ["allowBluetoothHFP", "defaultToSpeaker"],
         })
 
-        // Ensure iOS session is active before starting recorder callbacks
         await AudioManager.setAudioSessionActivity(true)
 
-        const permission = await AudioManager.requestRecordingPermissions()
+        const permission = await AudioManager.checkRecordingPermissions()
         const granted = permission === "Granted"
         setPermissionGranted(granted)
-        console.log("[Dictation] Mic permission:", permission)
+        setMicrophonePermissionState(granted ? "granted" : permission === "Denied" ? "denied" : "idle")
 
-        if (!granted) {
-          return
-        }
-
-        // On some devices/simulators no current input is selected by default
-        const devices = await AudioManager.getDevicesInfo()
-        console.log(
-          "[Dictation] Audio inputs:",
-          devices.availableInputs.length,
-          "current:",
-          devices.currentInputs.length,
-        )
-
-        if (devices.currentInputs.length === 0 && devices.availableInputs.length > 0) {
-          const pick = devices.availableInputs[0]
-          const selected = await AudioManager.setInputDevice(pick.id)
-          console.log("[Dictation] Selected input device:", pick.name, selected)
+        if (granted) {
+          await ensureAudioInputRoute()
         }
       } catch (e) {
-        console.error("Failed to set up audio permissions:", e)
+        console.error("Failed to set up audio session:", e)
       }
     })()
-  }, [])
+  }, [ensureAudioInputRoute])
 
   const loadWhisperContext = useCallback(
     async (modelID: WhisperModelID) => {
@@ -838,7 +903,11 @@ export default function DictationScreen() {
     ;(async () => {
       try {
         if (Platform.OS !== "ios") return
-        const granted = await ensureNotificationPermissions()
+        const existing = await Notifications.getPermissionsAsync()
+        const granted = Boolean((existing as { granted?: unknown }).granted)
+        if (active) {
+          setNotificationPermissionState(granted ? "granted" : "idle")
+        }
         if (!granted) return
         const token = await getDevicePushToken()
         if (token) {
@@ -1278,6 +1347,88 @@ export default function DictationScreen() {
       stopRecording,
     ],
   )
+
+  const handleRequestNotificationPermission = useCallback(async () => {
+    if (notificationPermissionState === "pending") return
+
+    setNotificationPermissionState("pending")
+
+    try {
+      const granted = await ensureNotificationPermissions()
+      setNotificationPermissionState(granted ? "granted" : "denied")
+
+      if (!granted) {
+        return
+      }
+
+      const token = await getDevicePushToken()
+      if (token) {
+        setDevicePushToken(token)
+      }
+    } catch {
+      setNotificationPermissionState("denied")
+    }
+  }, [notificationPermissionState])
+
+  const handleRequestMicrophonePermission = useCallback(async () => {
+    if (microphonePermissionState === "pending") return
+
+    setMicrophonePermissionState("pending")
+
+    try {
+      const permission = await AudioManager.requestRecordingPermissions()
+      const granted = permission === "Granted"
+      setPermissionGranted(granted)
+      setMicrophonePermissionState(granted ? "granted" : "denied")
+
+      if (granted) {
+        await ensureAudioInputRoute()
+      }
+    } catch {
+      setPermissionGranted(false)
+      setMicrophonePermissionState("denied")
+    }
+  }, [ensureAudioInputRoute, microphonePermissionState])
+
+  const handleRequestLocalNetworkPermission = useCallback(async () => {
+    if (localNetworkPermissionState === "pending") return
+
+    setLocalNetworkPermissionState("pending")
+
+    const localProbes = new Set<string>(["http://192.168.1.1", "http://192.168.0.1", "http://10.0.0.1"])
+
+    for (const server of serversRef.current) {
+      try {
+        const url = new URL(server.url)
+        if (looksLikeLocalHost(url.hostname)) {
+          localProbes.add(`${url.protocol}//${url.host}`)
+        }
+      } catch {
+        // Skip malformed saved server URL.
+      }
+    }
+
+    const controller = new AbortController()
+    const timeout = setTimeout(() => {
+      controller.abort()
+    }, 1800)
+
+    try {
+      await Promise.allSettled(
+        [...localProbes].map((base) =>
+          expoFetch(`${base.replace(/\/+$/, "")}/health`, {
+            method: "GET",
+            signal: controller.signal,
+          }),
+        ),
+      )
+      setLocalNetworkPermissionState("granted")
+    } catch {
+      setLocalNetworkPermissionState("denied")
+    } finally {
+      clearTimeout(timeout)
+    }
+  }, [localNetworkPermissionState])
 
   const completeSend = useCallback(() => {
     if (sendSettleTimeoutRef.current) {
@@ -2016,9 +2167,24 @@ export default function DictationScreen() {
         .catch(() => null)
         .then((mod) => {
           if (!mod) return null
+
+          const direct = (mod as { requestCameraPermissionsAsync?: unknown }).requestCameraPermissionsAsync
+          const fromCamera = (mod as { Camera?: { requestCameraPermissionsAsync?: unknown } }).Camera
+            ?.requestCameraPermissionsAsync
+          const requestCameraPermissionsAsync =
+            typeof direct === "function"
+              ? (direct as () => Promise<{ granted: boolean }>)
+              : typeof fromCamera === "function"
+                ? (fromCamera as () => Promise<{ granted: boolean }>)
+                : null
+
+          if (!requestCameraPermissionsAsync) {
+            return null
+          }
+
           const next = {
             CameraView: mod.CameraView,
-            requestCameraPermissionsAsync: mod.Camera.requestCameraPermissionsAsync,
+            requestCameraPermissionsAsync,
           }
           setCamera(next)
           return next
@@ -2036,6 +2202,31 @@ export default function DictationScreen() {
     setCamGranted(true)
     setScanOpen(true)
   }, [camGranted, camera])
+
+  const completeOnboarding = useCallback(
+    (openScanner: boolean) => {
+      setOnboardingComplete(true)
+      FileSystem.writeAsStringAsync(ONBOARDING_STATE_FILE, JSON.stringify({ completed: true })).catch(() => {})
+
+      if (openScanner) {
+        void handleStartScan()
+      }
+    },
+    [handleStartScan],
+  )
+
+  const handleReplayOnboarding = useCallback(() => {
+    setWhisperSettingsOpen(false)
+    setScanOpen(false)
+    setDropdownMode("none")
+    setOnboardingStep(0)
+    setMicrophonePermissionState(permissionGranted ? "granted" : "idle")
+    setNotificationPermissionState("idle")
+    setLocalNetworkPermissionState("idle")
+    setOnboardingReady(true)
+    setOnboardingComplete(false)
+    FileSystem.deleteAsync(ONBOARDING_STATE_FILE, { idempotent: true }).catch(() => {})
+  }, [permissionGranted])
 
   const handleScan = useCallback(
     (event: Scan) => {
@@ -2175,6 +2366,140 @@ export default function DictationScreen() {
       }),
     ).catch(() => {})
   }, [devicePushToken, servers])
+
+  const defaultModelInstalled = installedWhisperModels.includes(defaultWhisperModel)
+  const onboardingProgressRaw = downloadingModelID
+    ? downloadProgress
+    : defaultModelInstalled || activeWhisperModel === defaultWhisperModel
+      ? 1
+      : isPreparingWhisperModel
+        ? 0.12
+        : 0
+  const onboardingProgress = Math.max(0, Math.min(1, onboardingProgressRaw))
+  const onboardingProgressPct = Math.round(onboardingProgress * 100)
+  const onboardingModelStatus = downloadingModelID
+    ? `Downloading model in background ${onboardingProgressPct}%`
+    : onboardingProgress >= 1
+      ? "Model ready in background"
+      : "Downloading model in background"
+  const onboardingSafeStyle = useMemo(
+    () => [styles.onboardingRoot, { paddingTop: insets.top + 8, paddingBottom: Math.max(insets.bottom, 16) }],
+    [insets.bottom, insets.top],
+  )
+
+  if (!onboardingReady) {
+    return (
+      <SafeAreaView style={onboardingSafeStyle} edges={["left", "right"]}>
+        <StatusBar style="light" />
+      </SafeAreaView>
+    )
+  }
+
+  if (!onboardingComplete) {
+    return (
+      <SafeAreaView style={onboardingSafeStyle} edges={["left", "right"]}>
+        <StatusBar style="light" />
+
+        <View style={styles.onboardingModelRow}>
+          <Text style={styles.onboardingModelText}>{onboardingModelStatus}</Text>
+          <View style={styles.onboardingModelTrack}>
+            <View
+              style={[
+                styles.onboardingModelFill,
+                { width: `${Math.max(onboardingProgressPct, onboardingProgress > 0 ? 6 : 0)}%` },
+              ]}
+            />
+          </View>
+        </View>
+
+        <View style={styles.onboardingContent}>
+          {onboardingStep === 0 ? (
+            <View style={styles.onboardingStep}>
+              <Text style={styles.onboardingTitle}>Allow microphone</Text>
+              <Text style={styles.onboardingBody}>Enable microphone access so Control can record dictation.</Text>
+              <Pressable
+                onPress={() => {
+                  void (async () => {
+                    await handleRequestMicrophonePermission()
+                    setOnboardingStep(1)
+                  })()
+                }}
+                style={({ pressed }) => [styles.onboardingPrimaryButton, pressed && styles.clearButtonPressed]}
+                disabled={microphonePermissionState === "pending"}
+              >
+                <Text style={styles.onboardingPrimaryButtonText}>
+                  {microphonePermissionState === "pending" ? "Requesting..." : "Allow microphone"}
+                </Text>
+              </Pressable>
+              <Pressable onPress={() => setOnboardingStep(1)}>
+                <Text style={styles.onboardingSecondaryText}>Continue</Text>
+              </Pressable>
+            </View>
+          ) : onboardingStep === 1 ? (
+            <View style={styles.onboardingStep}>
+              <Text style={styles.onboardingTitle}>Allow notifications</Text>
+              <Text style={styles.onboardingBody}>Get session updates when your run completes.</Text>
+              <Pressable
+                onPress={() => {
+                  void (async () => {
+                    await handleRequestNotificationPermission()
+                    setOnboardingStep(2)
+                  })()
+                }}
+                style={({ pressed }) => [styles.onboardingPrimaryButton, pressed && styles.clearButtonPressed]}
+                disabled={notificationPermissionState === "pending"}
+              >
+                <Text style={styles.onboardingPrimaryButtonText}>
+                  {notificationPermissionState === "pending" ? "Requesting..." : "Allow notifications"}
+                </Text>
+              </Pressable>
+              <Pressable onPress={() => setOnboardingStep(2)}>
+                <Text style={styles.onboardingSecondaryText}>Continue</Text>
+              </Pressable>
+            </View>
+          ) : onboardingStep === 2 ? (
+            <View style={styles.onboardingStep}>
+              <Text style={styles.onboardingTitle}>Allow local network</Text>
+              <Text style={styles.onboardingBody}>This lets Control find your computer on your network.</Text>
+              <Pressable
+                onPress={() => {
+                  void (async () => {
+                    await handleRequestLocalNetworkPermission()
+                    setOnboardingStep(3)
+                  })()
+                }}
+                style={({ pressed }) => [styles.onboardingPrimaryButton, pressed && styles.clearButtonPressed]}
+                disabled={localNetworkPermissionState === "pending"}
+              >
+                <Text style={styles.onboardingPrimaryButtonText}>
+                  {localNetworkPermissionState === "pending" ? "Requesting..." : "Allow local network"}
+                </Text>
+              </Pressable>
+              <Pressable onPress={() => setOnboardingStep(3)}>
+                <Text style={styles.onboardingSecondaryText}>Continue</Text>
+              </Pressable>
+            </View>
+          ) : (
+            <View style={styles.onboardingStep}>
+              <Text style={styles.onboardingTitle}>Connect your computer</Text>
+              <Text style={styles.onboardingBody}>
+                Start `opencode serve` on your computer, then scan the QR code to pair.
+              </Text>
+              <Pressable
+                onPress={() => completeOnboarding(true)}
+                style={({ pressed }) => [styles.onboardingPrimaryButton, pressed && styles.clearButtonPressed]}
+              >
+                <Text style={styles.onboardingPrimaryButtonText}>Scan OpenCode QR</Text>
+              </Pressable>
+              <Pressable onPress={() => completeOnboarding(false)}>
+                <Text style={styles.onboardingSecondaryText}>I will do this later</Text>
+              </Pressable>
+            </View>
+          )}
+        </View>
+      </SafeAreaView>
+    )
+  }
 
   return (
     <SafeAreaView style={styles.container}>
@@ -2439,6 +2764,15 @@ export default function DictationScreen() {
             </Pressable>
           </View>
 
+          {__DEV__ ? (
+            <Pressable
+              onPress={handleReplayOnboarding}
+              style={({ pressed }) => [styles.settingsDevButton, pressed && styles.clearButtonPressed]}
+            >
+              <Text style={styles.settingsDevButtonText}>Dev: Replay onboarding</Text>
+            </Pressable>
+          ) : null}
+
           <View style={styles.settingsModeRow}>
             <Text style={styles.settingsModeLabel}>Transcription</Text>
             <View style={styles.settingsModeControls}>
@@ -2613,6 +2947,71 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: "#121212",
     position: "relative",
+  },
+  onboardingRoot: {
+    flex: 1,
+    backgroundColor: "#121212",
+    paddingHorizontal: 20,
+  },
+  onboardingContent: {
+    flex: 1,
+    justifyContent: "center",
+  },
+  onboardingStep: {
+    gap: 14,
+  },
+  onboardingModelRow: {
+    gap: 6,
+    marginBottom: 12,
+  },
+  onboardingModelText: {
+    color: "#C3C3C3",
+    fontSize: 12,
+    fontWeight: "600",
+  },
+  onboardingModelTrack: {
+    height: 4,
+    width: "100%",
+    borderRadius: 999,
+    backgroundColor: "#2C2C2C",
+    overflow: "hidden",
+  },
+  onboardingModelFill: {
+    height: "100%",
+    borderRadius: 999,
+    backgroundColor: "#FF5B47",
+  },
+  onboardingTitle: {
+    color: "#F1F1F1",
+    fontSize: 20,
+    fontWeight: "700",
+  },
+  onboardingBody: {
+    color: "#A3A3A3",
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  onboardingPrimaryButton: {
+    marginTop: 6,
+    height: 44,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#4B2620",
+    borderWidth: 1,
+    borderColor: "#70372D",
+  },
+  onboardingPrimaryButtonText: {
+    color: "#FFD9D2",
+    fontSize: 14,
+    fontWeight: "700",
+  },
+  onboardingSecondaryText: {
+    color: "#A8A8A8",
+    fontSize: 13,
+    fontWeight: "600",
+    textAlign: "center",
+    paddingVertical: 4,
   },
   dismissOverlay: {
     ...StyleSheet.absoluteFillObject,
@@ -2994,6 +3393,20 @@ const styles = StyleSheet.create({
   settingsClose: {
     color: "#C5C5C5",
     fontSize: 15,
+    fontWeight: "700",
+  },
+  settingsDevButton: {
+    alignSelf: "flex-start",
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#574D2B",
+    backgroundColor: "#2A2619",
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  settingsDevButtonText: {
+    color: "#EADDAE",
+    fontSize: 12,
     fontWeight: "700",
   },
   settingsModeRow: {
