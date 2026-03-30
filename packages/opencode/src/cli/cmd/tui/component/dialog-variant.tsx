@@ -34,6 +34,8 @@ export function DialogVariant() {
       title={"Select variant"}
       current={local.model.variant.selected()}
       flat={true}
+      hideFilter={true}
+      numbered={true}
     />
   )
 }

@@ -21,6 +21,8 @@ export interface DialogSelectProps<T> {
   onFilter?: (query: string) => void
   onSelect?: (option: DialogSelectOption<T>) => void
   skipFilter?: boolean
+  hideFilter?: boolean
+  numbered?: boolean
   keybind?: {
     keybind?: Keybind.Info
     title: string
@@ -194,6 +196,21 @@ export function DialogSelect<T>(props: DialogSelectProps<T>) {
     if (evt.name === "home") moveTo(0)
     if (evt.name === "end") moveTo(flat().length - 1)
 
+    if (props.numbered && !evt.ctrl && !evt.alt && !evt.meta) {
+      const num = parseInt(evt.name, 10)
+      if (num >= 1 && num <= 9 && num <= flat().length) {
+        evt.preventDefault()
+        evt.stopPropagation()
+        const index = num - 1
+        const option = flat()[index]
+        if (option) {
+          if (option.onSelect) option.onSelect(dialog)
+          props.onSelect?.(option)
+        }
+        return
+      }
+    }
+
     if (evt.name === "return") {
       const option = selected()
       if (option) {
@@ -240,29 +257,31 @@ export function DialogSelect<T>(props: DialogSelectProps<T>) {
             esc
           </text>
         </box>
-        <box paddingTop={1}>
-          <input
-            onInput={(e) => {
-              batch(() => {
-                setStore("filter", e)
-                props.onFilter?.(e)
-              })
-            }}
-            focusedBackgroundColor={theme.backgroundPanel}
-            cursorColor={theme.primary}
-            focusedTextColor={theme.textMuted}
-            ref={(r) => {
-              input = r
-              setTimeout(() => {
-                if (!input) return
-                if (input.isDestroyed) return
-                input.focus()
-              }, 1)
-            }}
-            placeholder={props.placeholder ?? "Search"}
-            placeholderColor={theme.textMuted}
-          />
-        </box>
+        <Show when={!props.hideFilter}>
+          <box paddingTop={1}>
+            <input
+              onInput={(e) => {
+                batch(() => {
+                  setStore("filter", e)
+                  props.onFilter?.(e)
+                })
+              }}
+              focusedBackgroundColor={theme.backgroundPanel}
+              cursorColor={theme.primary}
+              focusedTextColor={theme.textMuted}
+              ref={(r) => {
+                input = r
+                setTimeout(() => {
+                  if (!input) return
+                  if (input.isDestroyed) return
+                  input.focus()
+                }, 1)
+              }}
+              placeholder={props.placeholder ?? "Search"}
+              placeholderColor={theme.textMuted}
+            />
+          </box>
+        </Show>
       </box>
       <Show
         when={grouped().length > 0}
@@ -293,6 +312,25 @@ export function DialogSelect<T>(props: DialogSelectProps<T>) {
                   {(option) => {
                     const active = createMemo(() => isDeepEqual(option.value, selected()?.value))
                     const current = createMemo(() => isDeepEqual(option.value, props.current))
+                    const flatIndex = createMemo(() => flat().findIndex((x) => isDeepEqual(x.value, option.value)))
+                    const numberLabel = createMemo(() => {
+                      if (!props.numbered) return undefined
+                      const idx = flatIndex()
+                      return idx >= 0 && idx < 9 ? `${idx + 1}` : undefined
+                    })
+                    const gutter = createMemo(() => {
+                      if (numberLabel()) {
+                        return (
+                          <text
+                            fg={active() ? selectedForeground(theme) : theme.textMuted}
+                            flexShrink={0}
+                          >
+                            {numberLabel()}
+                          </text>
+                        )
+                      }
+                      return option.gutter
+                    })
                     return (
                       <box
                         id={JSON.stringify(option.value)}
@@ -316,7 +354,7 @@ export function DialogSelect<T>(props: DialogSelectProps<T>) {
                           moveTo(index)
                         }}
                         backgroundColor={active() ? (option.bg ?? theme.primary) : RGBA.fromInts(0, 0, 0, 0)}
-                        paddingLeft={current() || option.gutter ? 1 : 3}
+                        paddingLeft={current() || gutter() ? 1 : 3}
                         paddingRight={3}
                         gap={1}
                       >
@@ -326,7 +364,7 @@ export function DialogSelect<T>(props: DialogSelectProps<T>) {
                           description={option.description !== category ? option.description : undefined}
                           active={active()}
                           current={current()}
-                          gutter={option.gutter}
+                          gutter={gutter()}
                         />
                       </box>
                     )
