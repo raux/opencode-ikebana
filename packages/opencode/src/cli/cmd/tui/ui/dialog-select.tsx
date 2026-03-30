@@ -196,7 +196,7 @@ export function DialogSelect<T>(props: DialogSelectProps<T>) {
     if (evt.name === "home") moveTo(0)
     if (evt.name === "end") moveTo(flat().length - 1)
 
-    if (props.numbered && !evt.ctrl && !evt.alt && !evt.meta) {
+    if (props.numbered && !evt.ctrl) {
       const num = parseInt(evt.name, 10)
       if (num >= 1 && num <= 9 && num <= flat().length) {
         evt.preventDefault()
