@@ -165,10 +165,6 @@ export const ServeCommand = cmd({
         })
         console.log("scan qr code in mobile app or phone camera")
         console.log(code)
-        console.log("qr link")
-        console.log(link)
-        console.log("qr payload")
-        console.log(JSON.stringify(pair, null, 2))
       }
     }
 

@@ -3392,7 +3392,7 @@ export default function DictationScreen() {
         <SafeAreaView style={styles.settingsRoot}>
           <View style={styles.settingsTop}>
             <View style={styles.settingsTitleBlock}>
-              <Text style={styles.settingsTitle}>Whisper models</Text>
+              <Text style={styles.settingsTitle}>Settings</Text>
               <Text style={styles.settingsSubtitle}>Default: {WHISPER_MODEL_LABELS[defaultWhisperModel]}</Text>
             </View>
             <Pressable onPress={() => setWhisperSettingsOpen(false)}>
@@ -3400,35 +3400,51 @@ export default function DictationScreen() {
             </Pressable>
           </View>
 
-          {__DEV__ ? (
-            <Pressable
-              onPress={handleReplayOnboarding}
-              style={({ pressed }) => [styles.settingsDevButton, pressed && styles.clearButtonPressed]}
-            >
-              <Text style={styles.settingsDevButtonText}>Dev: Replay onboarding</Text>
-            </Pressable>
-          ) : null}
+          <ScrollView style={styles.settingsScroll} contentContainerStyle={styles.settingsContent}>
+            <View style={styles.settingsSection}>
+              <Text style={styles.settingsSectionLabel}>DEVELOPMENT:</Text>
+              {__DEV__ ? (
+                <Pressable
+                  onPress={handleReplayOnboarding}
+                  style={({ pressed }) => [styles.settingsTextRow, pressed && styles.clearButtonPressed]}
+                >
+                  <Text style={styles.settingsTextRowTitle}>Replay onboarding</Text>
+                  <Text style={styles.settingsTextRowAction}>Run</Text>
+                </Pressable>
+              ) : (
+                <View style={styles.settingsTextRow}>
+                  <Text style={styles.settingsMutedText}>Available in development builds.</Text>
+                </View>
+              )}
+            </View>
 
-          <View style={styles.settingsModeRow}>
-            <Text style={styles.settingsModeLabel}>Transcription</Text>
-            <View style={styles.settingsModeControls}>
+            <View style={styles.settingsSection}>
+              <Text style={styles.settingsSectionLabel}>GENERAL:</Text>
+              <View style={styles.settingsTextRow}>
+                <Text style={styles.settingsTextRowTitle}>Default model</Text>
+                <Text style={styles.settingsTextRowValue}>{WHISPER_MODEL_LABELS[defaultWhisperModel]}</Text>
+              </View>
+
               <Pressable
                 onPress={() => setTranscriptionMode("bulk")}
                 disabled={isRecording || isTranscribingBulk}
                 style={({ pressed }) => [
-                  styles.settingsModeButton,
-                  transcriptionMode === "bulk" && styles.settingsModeButtonActive,
+                  styles.settingsTextRow,
                   (isRecording || isTranscribingBulk) && styles.settingsInlinePressableDisabled,
                   pressed && styles.clearButtonPressed,
                 ]}
               >
+                <View style={styles.settingsOptionCopy}>
+                  <Text style={styles.settingsTextRowTitle}>On Release</Text>
+                  <Text style={styles.settingsTextRowMeta}>Transcribe after release</Text>
+                </View>
                 <Text
                   style={[
-                    styles.settingsModeButtonText,
-                    transcriptionMode === "bulk" && styles.settingsModeButtonTextActive,
+                    styles.settingsTextRowAction,
+                    transcriptionMode === "bulk" && styles.settingsTextRowActionActive,
                   ]}
                 >
-                  On Release
+                  {transcriptionMode === "bulk" ? "Selected" : "Use"}
                 </Text>
               </Pressable>
 
@@ -3436,114 +3452,112 @@ export default function DictationScreen() {
                 onPress={() => setTranscriptionMode("realtime")}
                 disabled={isRecording || isTranscribingBulk}
                 style={({ pressed }) => [
-                  styles.settingsModeButton,
-                  transcriptionMode === "realtime" && styles.settingsModeButtonActive,
+                  styles.settingsTextRow,
                   (isRecording || isTranscribingBulk) && styles.settingsInlinePressableDisabled,
                   pressed && styles.clearButtonPressed,
                 ]}
               >
+                <View style={styles.settingsOptionCopy}>
+                  <Text style={styles.settingsTextRowTitle}>Realtime</Text>
+                  <Text style={styles.settingsTextRowMeta}>Transcribe while you speak</Text>
+                </View>
                 <Text
                   style={[
-                    styles.settingsModeButtonText,
-                    transcriptionMode === "realtime" && styles.settingsModeButtonTextActive,
+                    styles.settingsTextRowAction,
+                    transcriptionMode === "realtime" && styles.settingsTextRowActionActive,
                   ]}
                 >
-                  Realtime
+                  {transcriptionMode === "realtime" ? "Selected" : "Use"}
                 </Text>
               </Pressable>
             </View>
-          </View>
 
-          <ScrollView style={styles.settingsScroll} contentContainerStyle={styles.settingsContent}>
-            {WHISPER_MODELS.map((modelID) => {
-              const installed = installedWhisperModels.includes(modelID)
-              const isDefault = defaultWhisperModel === modelID
-              const isDownloading = downloadingModelID === modelID
-              const actionDisabled = (downloadingModelID !== null && !isDownloading) || isTranscribingBulk
-              const rowLabel = isDefault ? `${modelID} · default` : modelID
-              const actionIcon = isDownloading ? "…" : installed ? "✓" : "↓"
-              const downloadPct = Math.round(Math.max(0, Math.min(1, downloadProgress)) * 100)
-              const actionLabel = isDownloading
-                ? "Downloading"
-                : installed
-                  ? isDefault
-                    ? "Selected"
-                    : "Select"
-                  : "Download"
-              const sizeLabel = formatWhisperModelSize(WHISPER_MODEL_SIZES[modelID])
+            <View style={styles.settingsSection}>
+              <Text style={styles.settingsSectionLabel}>MODELS:</Text>
+              {WHISPER_MODELS.map((modelID) => {
+                const installed = installedWhisperModels.includes(modelID)
+                const isDefault = defaultWhisperModel === modelID
+                const isDownloading = downloadingModelID === modelID
+                const actionDisabled = (downloadingModelID !== null && !isDownloading) || isTranscribingBulk
+                const downloadPct = Math.round(Math.max(0, Math.min(1, downloadProgress)) * 100)
+                const actionLabel = isDownloading
+                  ? `${downloadPct}%`
+                  : installed
+                    ? isDefault
+                      ? "Selected"
+                      : "Select"
+                    : "Download"
+                const sizeLabel = formatWhisperModelSize(WHISPER_MODEL_SIZES[modelID])
+                const rowMeta = [sizeLabel, installed ? "installed" : null, isDefault ? "default" : null]
+                  .filter(Boolean)
+                  .join(" · ")
 
-              return (
-                <View key={modelID} style={styles.settingsInlineRow}>
-                  <Pressable
-                    onPress={() => {
-                      if (installed) {
-                        void handleSelectWhisperModel(modelID)
-                      }
-                    }}
-                    onLongPress={() => {
-                      if (!installed || isDownloading) return
-                      Alert.alert("Delete model?", `Remove ${modelID} from this device?`, [
-                        { text: "Cancel", style: "cancel" },
-                        {
-                          text: "Delete",
-                          style: "destructive",
-                          onPress: () => {
-                            void handleDeleteWhisperModel(modelID)
+                return (
+                  <View key={modelID} style={styles.settingsInlineRow}>
+                    <Pressable
+                      onPress={() => {
+                        if (installed) {
+                          void handleSelectWhisperModel(modelID)
+                        }
+                      }}
+                      onLongPress={() => {
+                        if (!installed || isDownloading) return
+                        Alert.alert("Delete model?", `Remove ${modelID} from this device?`, [
+                          { text: "Cancel", style: "cancel" },
+                          {
+                            text: "Delete",
+                            style: "destructive",
+                            onPress: () => {
+                              void handleDeleteWhisperModel(modelID)
+                            },
                           },
-                        },
-                      ])
-                    }}
-                    delayLongPress={350}
-                    disabled={!installed || actionDisabled || isPreparingWhisperModel}
-                    style={({ pressed }) => [
-                      styles.settingsInlineLabelPressable,
-                      (!installed || actionDisabled || isPreparingWhisperModel) &&
-                        styles.settingsInlinePressableDisabled,
-                      pressed && styles.clearButtonPressed,
-                    ]}
-                  >
-                    <Text style={styles.settingsInlineName}>{rowLabel}</Text>
-                  </Pressable>
+                        ])
+                      }}
+                      delayLongPress={350}
+                      disabled={!installed || actionDisabled || isPreparingWhisperModel}
+                      style={({ pressed }) => [
+                        styles.settingsInlineLabelPressable,
+                        (!installed || actionDisabled || isPreparingWhisperModel) &&
+                          styles.settingsInlinePressableDisabled,
+                        pressed && styles.clearButtonPressed,
+                      ]}
+                    >
+                      <Text style={styles.settingsInlineName}>{modelID}</Text>
+                      <Text style={styles.settingsInlineMeta}>{rowMeta}</Text>
+                    </Pressable>
 
-                  <Text style={styles.settingsInlineSize}>{sizeLabel}</Text>
-
-                  <Pressable
-                    onPress={() => {
-                      if (isDownloading) return
-                      if (installed) {
-                        void handleSelectWhisperModel(modelID)
-                        return
-                      }
-                      void handleDownloadWhisperModel(modelID)
-                    }}
-                    disabled={actionDisabled || (installed && isPreparingWhisperModel)}
-                    accessibilityLabel={actionLabel}
-                    style={({ pressed }) => [
-                      styles.settingsInlineIconButton,
-                      (actionDisabled || (installed && isPreparingWhisperModel)) &&
-                        styles.settingsInlinePressableDisabled,
-                      pressed && styles.clearButtonPressed,
-                    ]}
-                  >
-                    {isDownloading ? (
-                      <View style={styles.settingsDownloadCircle}>
-                        <Text style={styles.settingsDownloadCircleText}>{downloadPct}</Text>
-                      </View>
-                    ) : (
+                    <Pressable
+                      onPress={() => {
+                        if (isDownloading) return
+                        if (installed) {
+                          void handleSelectWhisperModel(modelID)
+                          return
+                        }
+                        void handleDownloadWhisperModel(modelID)
+                      }}
+                      disabled={actionDisabled || (installed && isPreparingWhisperModel)}
+                      accessibilityLabel={actionLabel}
+                      style={({ pressed }) => [
+                        styles.settingsInlineTextActionPressable,
+                        (actionDisabled || (installed && isPreparingWhisperModel)) &&
+                          styles.settingsInlinePressableDisabled,
+                        pressed && styles.clearButtonPressed,
+                      ]}
+                    >
                       <Text
                         style={[
-                          styles.settingsInlineIcon,
-                          installed && styles.settingsInlineIconInstalled,
-                          isDownloading && styles.settingsInlineIconDownloading,
+                          styles.settingsInlineTextAction,
+                          installed && styles.settingsInlineTextActionInstalled,
+                          isDownloading && styles.settingsInlineTextActionDownloading,
                         ]}
                       >
-                        {actionIcon}
+                        {actionLabel}
                       </Text>
-                    )}
-                  </Pressable>
-                </View>
-              )
-            })}
+                    </Pressable>
+                  </View>
+                )
+              })}
+            </View>
           </ScrollView>
         </SafeAreaView>
       </Modal>
@@ -4044,13 +4058,13 @@ const styles = StyleSheet.create({
     backgroundColor: "#121212",
     paddingHorizontal: 16,
     paddingTop: 12,
-    gap: 12,
   },
   settingsTop: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     gap: 12,
+    marginBottom: 4,
   },
   settingsTitleBlock: {
     flex: 1,
@@ -4058,7 +4072,7 @@ const styles = StyleSheet.create({
   },
   settingsTitle: {
     color: "#F1F1F1",
-    fontSize: 18,
+    fontSize: 20,
     fontWeight: "700",
   },
   settingsSubtitle: {
@@ -4071,73 +4085,73 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: "700",
   },
-  settingsDevButton: {
-    alignSelf: "flex-start",
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: "#574D2B",
-    backgroundColor: "#2A2619",
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-  },
-  settingsDevButtonText: {
-    color: "#EADDAE",
-    fontSize: 12,
-    fontWeight: "700",
-  },
-  settingsModeRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 10,
-    borderWidth: 1,
-    borderColor: "#2B2B2B",
-    borderRadius: 10,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    backgroundColor: "#171717",
-  },
-  settingsModeLabel: {
-    color: "#D2D2D2",
-    fontSize: 12,
-    fontWeight: "600",
-    letterSpacing: 0.2,
-  },
-  settingsModeControls: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
-  settingsModeButton: {
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: "#3A3A3A",
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    backgroundColor: "#1E1E1E",
-  },
-  settingsModeButtonActive: {
-    borderColor: "#6B3A31",
-    backgroundColor: "#3D231E",
-  },
-  settingsModeButtonText: {
-    color: "#B9B9B9",
-    fontSize: 12,
-    fontWeight: "600",
-  },
-  settingsModeButtonTextActive: {
-    color: "#FFD8D2",
-  },
   settingsScroll: {
     flex: 1,
   },
   settingsContent: {
+    gap: 24,
     paddingBottom: 24,
+  },
+  settingsSection: {
+    gap: 0,
+  },
+  settingsSectionLabel: {
+    color: "#7D7D7D",
+    fontSize: 11,
+    fontWeight: "700",
+    letterSpacing: 1.05,
+    marginBottom: 6,
+  },
+  settingsTextRow: {
+    minHeight: 46,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: "#242424",
+    paddingVertical: 10,
+  },
+  settingsMutedText: {
+    color: "#868686",
+    fontSize: 12,
+    fontWeight: "500",
+  },
+  settingsOptionCopy: {
+    flex: 1,
+    minWidth: 0,
+    gap: 2,
+  },
+  settingsTextRowTitle: {
+    color: "#ECECEC",
+    fontSize: 14,
+    fontWeight: "600",
+  },
+  settingsTextRowMeta: {
+    color: "#8D8D8D",
+    fontSize: 12,
+    fontWeight: "500",
+  },
+  settingsTextRowValue: {
+    color: "#BDBDBD",
+    fontSize: 13,
+    fontWeight: "600",
+    maxWidth: "55%",
+    textAlign: "right",
+  },
+  settingsTextRowAction: {
+    color: "#B8B8B8",
+    fontSize: 12,
+    fontWeight: "700",
+    letterSpacing: 0.2,
+  },
+  settingsTextRowActionActive: {
+    color: "#FFD8D2",
   },
   settingsInlineRow: {
     flexDirection: "row",
     alignItems: "center",
-    minHeight: 44,
+    minHeight: 52,
     borderBottomWidth: 1,
     borderBottomColor: "#242424",
   },
@@ -4146,58 +4160,40 @@ const styles = StyleSheet.create({
     minWidth: 0,
     paddingVertical: 10,
     paddingRight: 12,
+    gap: 2,
   },
   settingsInlinePressableDisabled: {
     opacity: 0.55,
   },
   settingsInlineName: {
     color: "#E7E7E7",
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: "600",
   },
-  settingsInlineSize: {
+  settingsInlineMeta: {
     color: "#8F8F8F",
     fontSize: 12,
     fontWeight: "500",
-    minWidth: 64,
+  },
+  settingsInlineTextActionPressable: {
+    marginLeft: 8,
+    paddingVertical: 8,
+    paddingHorizontal: 2,
+    alignItems: "flex-end",
+    justifyContent: "center",
+  },
+  settingsInlineTextAction: {
+    color: "#D0D0D0",
+    fontSize: 12,
+    fontWeight: "700",
+    minWidth: 72,
     textAlign: "right",
   },
-  settingsInlineIconButton: {
-    width: 36,
-    height: 36,
-    marginLeft: 8,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  settingsInlineIcon: {
-    color: "#D0D0D0",
-    fontSize: 17,
-    fontWeight: "700",
-    lineHeight: 19,
-  },
-  settingsInlineIconInstalled: {
+  settingsInlineTextActionInstalled: {
     color: "#E2B1A8",
   },
-  settingsInlineIconDownloading: {
+  settingsInlineTextActionDownloading: {
     color: "#FFD7CE",
-    fontWeight: "700",
-  },
-  settingsDownloadCircle: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    borderWidth: 2,
-    borderColor: "#FF6A57",
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#2A1715",
-  },
-  settingsDownloadCircleText: {
-    color: "#FFD9D2",
-    fontSize: 9,
-    fontWeight: "700",
-    letterSpacing: -0.1,
-    lineHeight: 10,
   },
   scanRoot: {
     flex: 1,
