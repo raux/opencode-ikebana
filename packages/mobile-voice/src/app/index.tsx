@@ -2920,90 +2920,82 @@ export default function DictationScreen() {
   }, [devicePushToken, relayServersKey])
 
   const defaultModelInstalled = installedWhisperModels.includes(defaultWhisperModel)
-  const onboardingProgressRaw = downloadingModelID
-    ? downloadProgress
-    : defaultModelInstalled || activeWhisperModel === defaultWhisperModel
-      ? 1
-      : isPreparingWhisperModel
-        ? 0.12
-        : 0
+  let onboardingProgressRaw = 0
+  if (downloadingModelID) {
+    onboardingProgressRaw = downloadProgress
+  } else if (defaultModelInstalled || activeWhisperModel === defaultWhisperModel) {
+    onboardingProgressRaw = 1
+  } else if (isPreparingWhisperModel) {
+    onboardingProgressRaw = 0.12
+  }
   const onboardingProgress = Math.max(0, Math.min(1, onboardingProgressRaw))
   const onboardingProgressPct = Math.round(onboardingProgress * 100)
-  const onboardingModelStatus = downloadingModelID
-    ? `Downloading model in background ${onboardingProgressPct}%`
-    : onboardingProgress >= 1
-      ? "Model ready in background"
-      : "Downloading model in background"
-  const onboardingStepCount = 4
+  let onboardingModelStatus = "Downloading model in background"
+  if (downloadingModelID) {
+    onboardingModelStatus = `Downloading model in background ${onboardingProgressPct}%`
+  } else if (onboardingProgress >= 1) {
+    onboardingModelStatus = "Model ready in background"
+  }
+  const onboardingSteps = [
+    {
+      title: "Allow mic access.",
+      body: "Control only listens while you hold the record button.",
+      primaryLabel: microphonePermissionState === "pending" ? "Requesting microphone..." : "Allow microphone",
+      primaryDisabled: microphonePermissionState === "pending",
+      secondaryLabel: "Continue without granting",
+      visualTag: "MIC",
+      visualSurfaceStyle: styles.onboardingVisualSurfaceMic,
+      visualOrbStyle: styles.onboardingVisualOrbMic,
+      visualTagStyle: styles.onboardingVisualTagMic,
+    },
+    {
+      title: "Turn on notifications.",
+      body: "Get alerts when your OpenCode run finishes, fails, or needs your attention.",
+      primaryLabel: notificationPermissionState === "pending" ? "Requesting notifications..." : "Allow notifications",
+      primaryDisabled: notificationPermissionState === "pending",
+      secondaryLabel: "Continue without granting",
+      visualTag: "PUSH",
+      visualSurfaceStyle: styles.onboardingVisualSurfaceNotifications,
+      visualOrbStyle: styles.onboardingVisualOrbNotifications,
+      visualTagStyle: styles.onboardingVisualTagNotifications,
+    },
+    {
+      title: "Enable local network.",
+      body: "This lets Control discover your machine on the same network.",
+      primaryLabel: localNetworkPermissionState === "pending" ? "Requesting local network..." : "Allow local network",
+      primaryDisabled: localNetworkPermissionState === "pending",
+      secondaryLabel: "Continue without granting",
+      visualTag: "LAN",
+      visualSurfaceStyle: styles.onboardingVisualSurfaceNetwork,
+      visualOrbStyle: styles.onboardingVisualOrbNetwork,
+      visualTagStyle: styles.onboardingVisualTagNetwork,
+    },
+    {
+      title: "Pair your computer.",
+      body: "Start `opencode serve` on your computer, then scan the QR code to pair.",
+      primaryLabel: "Scan OpenCode QR",
+      primaryDisabled: false,
+      secondaryLabel: "I will do this later",
+      visualTag: "PAIR",
+      visualSurfaceStyle: styles.onboardingVisualSurfacePair,
+      visualOrbStyle: styles.onboardingVisualOrbPair,
+      visualTagStyle: styles.onboardingVisualTagPair,
+    },
+  ] as const
+  const onboardingStepCount = onboardingSteps.length
   const clampedOnboardingStep = Math.max(0, Math.min(onboardingStep, onboardingStepCount - 1))
-  const onboardingTitle =
-    clampedOnboardingStep === 0
-      ? "Allow mic access."
-      : clampedOnboardingStep === 1
-        ? "Turn on notifications."
-        : clampedOnboardingStep === 2
-          ? "Enable local network."
-          : "Pair your computer."
-  const onboardingBody =
-    clampedOnboardingStep === 0
-      ? "Control only listens while you hold the record button."
-      : clampedOnboardingStep === 1
-        ? "Get alerts when your OpenCode run finishes, fails, or needs your attention."
-        : clampedOnboardingStep === 2
-          ? "This lets Control discover your machine on the same network."
-          : "Start `opencode serve` on your computer, then scan the QR code to pair."
-  const onboardingPrimaryLabel =
-    clampedOnboardingStep === 0
-      ? microphonePermissionState === "pending"
-        ? "Requesting microphone..."
-        : "Allow microphone"
-      : clampedOnboardingStep === 1
-        ? notificationPermissionState === "pending"
-          ? "Requesting notifications..."
-          : "Allow notifications"
-        : clampedOnboardingStep === 2
-          ? localNetworkPermissionState === "pending"
-            ? "Requesting local network..."
-            : "Allow local network"
-          : "Scan OpenCode QR"
-  const onboardingPrimaryDisabled =
-    (clampedOnboardingStep === 0 && microphonePermissionState === "pending") ||
-    (clampedOnboardingStep === 1 && notificationPermissionState === "pending") ||
-    (clampedOnboardingStep === 2 && localNetworkPermissionState === "pending")
-  const onboardingSecondaryLabel =
-    clampedOnboardingStep === onboardingStepCount - 1 ? "I will do this later" : "Continue without granting"
-  const onboardingVisualTag =
-    clampedOnboardingStep === 0
-      ? "MIC"
-      : clampedOnboardingStep === 1
-        ? "PUSH"
-        : clampedOnboardingStep === 2
-          ? "LAN"
-          : "PAIR"
-  const onboardingVisualSurfaceStyle =
-    clampedOnboardingStep === 0
-      ? styles.onboardingVisualSurfaceMic
-      : clampedOnboardingStep === 1
-        ? styles.onboardingVisualSurfaceNotifications
-        : clampedOnboardingStep === 2
-          ? styles.onboardingVisualSurfaceNetwork
-          : styles.onboardingVisualSurfacePair
-  const onboardingVisualOrbStyle =
-    clampedOnboardingStep === 0
-      ? styles.onboardingVisualOrbMic
-      : clampedOnboardingStep === 1
-        ? styles.onboardingVisualOrbNotifications
-        : clampedOnboardingStep === 2
-          ? styles.onboardingVisualOrbNetwork
-          : styles.onboardingVisualOrbPair
-  const onboardingVisualTagStyle =
-    clampedOnboardingStep === 0
-      ? styles.onboardingVisualTagMic
-      : clampedOnboardingStep === 1
-        ? styles.onboardingVisualTagNotifications
-        : clampedOnboardingStep === 2
-          ? styles.onboardingVisualTagNetwork
-          : styles.onboardingVisualTagPair
+  const onboardingCurrentStep = onboardingSteps[clampedOnboardingStep]
+  const {
+    title: onboardingTitle,
+    body: onboardingBody,
+    primaryLabel: onboardingPrimaryLabel,
+    primaryDisabled: onboardingPrimaryDisabled,
+    secondaryLabel: onboardingSecondaryLabel,
+    visualTag: onboardingVisualTag,
+    visualSurfaceStyle: onboardingVisualSurfaceStyle,
+    visualOrbStyle: onboardingVisualOrbStyle,
+    visualTagStyle: onboardingVisualTagStyle,
+  } = onboardingCurrentStep
   const onboardingSafeStyle = useMemo(
     () => [styles.onboardingRoot, { paddingTop: insets.top + 8, paddingBottom: Math.max(insets.bottom, 16) }],
     [insets.bottom, insets.top],
