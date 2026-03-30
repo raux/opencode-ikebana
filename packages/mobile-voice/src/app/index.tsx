@@ -239,6 +239,22 @@ type Pair = {
   hosts: string[]
 }
 
+type PairHostKind = "tailnet_name" | "tailnet_ip" | "mdns" | "lan" | "loopback" | "public" | "unknown"
+
+type PairHostOption = {
+  url: string
+  kind: PairHostKind
+  label: string
+}
+
+type PairHostProbe = {
+  status: "checking" | "online" | "offline"
+  latencyMs?: number
+  note?: string
+}
+
+const AUDIO_SESSION_BUSY_MESSAGE = "Microphone is unavailable while another call is active. End the call and try again."
+
 type Scan = {
   data: string
 }
@@ -314,51 +330,108 @@ function isLoopback(hostname: string): boolean {
   return hostname === "127.0.0.1" || hostname === "localhost" || hostname === "0.0.0.0" || hostname === "::1"
 }
 
-/**
- * Probe all non-loopback hosts in parallel by hitting /health, then
- * choose the first reachable host based on the original ordering.
- * This preserves server-side preference (e.g. tailnet before LAN).
- */
-async function pickHost(list: string[]): Promise<string | undefined> {
-  const candidates = list.filter((item) => {
-    try {
-      return !isLoopback(new URL(item).hostname)
-    } catch {
-      return false
-    }
-  })
+function isCarrierGradeNat(hostname: string): boolean {
+  const match = /^100\.(\d{1,3})\./.exec(hostname)
+  if (!match) return false
+  const octet = Number(match[1])
+  return octet >= 64 && octet <= 127
+}
 
-  if (!candidates.length) return list[0]
+function classifyPairHost(hostname: string): PairHostKind {
+  if (isLoopback(hostname)) return "loopback"
+  if (hostname.endsWith(".ts.net")) return "tailnet_name"
+  if (isCarrierGradeNat(hostname)) return "tailnet_ip"
+  if (hostname.endsWith(".local")) return "mdns"
+  if (hostname.startsWith("10.") || hostname.startsWith("192.168.") || /^172\.(1[6-9]|2\d|3[0-1])\./.test(hostname)) {
+    return "lan"
+  }
+  if (hostname.includes(".")) return "public"
+  return "unknown"
+}
 
-  const probes = candidates.map(async (host) => {
-    const controller = new AbortController()
-    const timeout = setTimeout(() => controller.abort(), 3000)
-    try {
-      const res = await fetch(`${host.replace(/\/+$/, "")}/health`, {
-        method: "GET",
-        signal: controller.signal,
-      })
-      return res.ok
-    } catch {
-      return false
-    } finally {
-      clearTimeout(timeout)
-    }
-  })
+function pairHostKindLabel(kind: PairHostKind): string {
+  switch (kind) {
+    case "tailnet_name":
+      return "Tailscale DNS"
+    case "tailnet_ip":
+      return "Tailscale IP"
+    case "mdns":
+      return "mDNS"
+    case "lan":
+      return "LAN"
+    case "loopback":
+      return "Loopback"
+    case "public":
+      return "Public"
+    default:
+      return "Unknown"
+  }
+}
 
-  for (let index = 0; index < candidates.length; index += 1) {
-    const reachable = await probes[index]
-    if (reachable) {
-      return candidates[index]
-    }
+function normalizePairHosts(input: string[]): PairHostOption[] {
+  const seen = new Set<string>()
+  const normalized = input
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .map((item) => {
+      try {
+        const parsed = new URL(item)
+        const url = `${parsed.protocol}//${parsed.host}`
+        if (seen.has(url)) return null
+        seen.add(url)
+        return {
+          url,
+          kind: classifyPairHost(parsed.hostname),
+          label: parsed.hostname,
+        } as PairHostOption
+      } catch {
+        return null
+      }
+    })
+    .filter((item): item is PairHostOption => !!item)
+
+  const nonLoopback = normalized.filter((item) => item.kind !== "loopback")
+  return nonLoopback.length > 0 ? nonLoopback : normalized
+}
+
+function pairProbeLabel(probe: PairHostProbe | undefined): string {
+  if (!probe || probe.status === "checking") return "Checking..."
+  if (probe.status === "online") return `${probe.latencyMs ?? 0} ms`
+  return probe.note ?? "Unavailable"
+}
+
+function pairProbeSummary(probe: PairHostProbe | undefined): string {
+  if (!probe || probe.status === "checking") {
+    return "Health check in progress"
   }
 
-  // none reachable — keep first candidate as deterministic fallback
-  try {
-    return candidates[0]
-  } catch {
-    return list[0]
+  if (probe.status === "online") {
+    return `Healthy, reached in ${probe.latencyMs ?? 0} ms`
   }
+
+  return `Health check: ${probe.note ?? "Unavailable"}`
+}
+
+function isAudioSessionBusyError(error: unknown): boolean {
+  const message = error instanceof Error ? `${error.name} ${error.message}` : String(error ?? "")
+  return (
+    message.includes("InsufficientPriority") ||
+    message.includes("561017449") ||
+    message.includes("Session activation failed")
+  )
+}
+
+function normalizeAudioStartErrorMessage(error: unknown): string {
+  if (isAudioSessionBusyError(error)) {
+    return AUDIO_SESSION_BUSY_MESSAGE
+  }
+
+  const raw = error instanceof Error ? error.message.trim() : String(error ?? "").trim()
+  if (!raw) {
+    return "Unable to activate microphone."
+  }
+
+  return raw
 }
 
 export default function DictationScreen() {
@@ -392,6 +465,12 @@ export default function DictationScreen() {
   const [dropdownRenderMode, setDropdownRenderMode] = useState<Exclude<DropdownMode, "none">>("server")
   const [sessionCreateMode, setSessionCreateMode] = useState<"same" | "root" | null>(null)
   const [scanOpen, setScanOpen] = useState(false)
+  const [pairSelectionOpen, setPairSelectionOpen] = useState(false)
+  const [pendingPair, setPendingPair] = useState<Pair | null>(null)
+  const [pairHostOptions, setPairHostOptions] = useState<PairHostOption[]>([])
+  const [selectedPairHostURL, setSelectedPairHostURL] = useState<string | null>(null)
+  const [pairHostProbes, setPairHostProbes] = useState<Record<string, PairHostProbe>>({})
+  const [isConnectingPairHost, setIsConnectingPairHost] = useState(false)
   const [camGranted, setCamGranted] = useState(false)
   const [waveformLevels, setWaveformLevels] = useState<number[]>(Array.from({ length: 24 }, () => 0))
   const [waveformTick, setWaveformTick] = useState(0)
@@ -419,6 +498,7 @@ export default function DictationScreen() {
   const waveformPulseIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const sendSettleTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const scanLockRef = useRef(false)
+  const pairProbeRunRef = useRef(0)
   const whisperRestoredRef = useRef(false)
 
   const closeDropdown = useCallback(() => {
@@ -576,6 +656,29 @@ export default function DictationScreen() {
     }
   }, [])
 
+  const activateAudioSession = useCallback(
+    async (trigger: "startup" | "record") => {
+      try {
+        await AudioManager.setAudioSessionActivity(true)
+        return true
+      } catch (error) {
+        const message = normalizeAudioStartErrorMessage(error)
+        if (trigger === "record") {
+          setWhisperError(message)
+        }
+
+        if (isAudioSessionBusyError(error)) {
+          console.warn("[Audio] Session activation deferred:", { trigger, message })
+          return false
+        }
+
+        console.warn("[Audio] Session activation failed:", { trigger, message })
+        return false
+      }
+    },
+    [setWhisperError],
+  )
+
   // Set up audio session and check microphone permissions on mount.
   useEffect(() => {
     void (async () => {
@@ -586,21 +689,22 @@ export default function DictationScreen() {
           iosOptions: ["allowBluetoothHFP", "defaultToSpeaker"],
         })
 
-        await AudioManager.setAudioSessionActivity(true)
+        const sessionReady = await activateAudioSession("startup")
 
         const permission = await AudioManager.checkRecordingPermissions()
         const granted = permission === "Granted"
         setPermissionGranted(granted)
         setMicrophonePermissionState(granted ? "granted" : permission === "Denied" ? "denied" : "idle")
 
-        if (granted) {
+        if (granted && sessionReady) {
           await ensureAudioInputRoute()
         }
       } catch (e) {
-        console.error("Failed to set up audio session:", e)
+        const message = normalizeAudioStartErrorMessage(e)
+        console.warn("[Audio] Setup warning:", message)
       }
     })()
-  }, [ensureAudioInputRoute])
+  }, [activateAudioSession, ensureAudioInputRoute])
 
   const loadWhisperContext = useCallback(
     async (modelID: WhisperModelID) => {
@@ -847,6 +951,27 @@ export default function DictationScreen() {
     const cancelled = () => !isRecordingRef.current || activeSessionRef.current !== sessionID
 
     try {
+      const permission = await AudioManager.checkRecordingPermissions()
+      const granted = permission === "Granted"
+      setPermissionGranted(granted)
+      setMicrophonePermissionState(granted ? "granted" : permission === "Denied" ? "denied" : "idle")
+
+      if (!granted) {
+        setWhisperError("Microphone permission is required to record.")
+        finalizeRecordingState()
+        void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => {})
+        return
+      }
+
+      const sessionReady = await activateAudioSession("record")
+      if (!sessionReady) {
+        finalizeRecordingState()
+        void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => {})
+        return
+      }
+
+      await ensureAudioInputRoute()
+
       const context = await ensureWhisperModelReady(defaultWhisperModel)
       if (cancelled()) {
         isStartingRef.current = false
@@ -977,9 +1102,15 @@ export default function DictationScreen() {
 
       isStartingRef.current = false
     } catch (error) {
-      console.error("[Dictation] Failed to start realtime transcription:", error)
-      const message = error instanceof Error ? error.message : "Unable to start transcription"
+      const busy = isAudioSessionBusyError(error)
+      const message = normalizeAudioStartErrorMessage(error)
       setWhisperError(message)
+
+      if (busy) {
+        console.warn("[Dictation] Recording blocked while call is active")
+      } else {
+        console.error("[Dictation] Failed to start realtime transcription:", error)
+      }
 
       const activeTranscriber = whisperTranscriberRef.current
       whisperTranscriberRef.current = null
@@ -991,7 +1122,9 @@ export default function DictationScreen() {
       }
 
       finalizeRecordingState()
-      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {})
+      void Haptics.notificationAsync(
+        busy ? Haptics.NotificationFeedbackType.Warning : Haptics.NotificationFeedbackType.Error,
+      ).catch(() => {})
     }
   }, [
     defaultWhisperModel,
@@ -999,6 +1132,8 @@ export default function DictationScreen() {
     ensureWhisperModelReady,
     finalizeRecordingState,
     isTranscribingBulk,
+    activateAudioSession,
+    ensureAudioInputRoute,
     startWaveformPulse,
     transcriptionMode,
     transcribedText,
@@ -1503,6 +1638,20 @@ export default function DictationScreen() {
   const showSessionCreationChoices =
     effectiveDropdownMode === "session" && !!activeServer && activeServer.status === "online"
   const sessionCreationChoiceCount = showSessionCreationChoices ? (activeSession ? 2 : 1) : 0
+  const recommendedPairHostURL = useMemo(() => {
+    const online = pairHostOptions
+      .map((item) => ({ item, probe: pairHostProbes[item.url] }))
+      .filter((entry) => entry.probe?.status === "online")
+      .sort(
+        (a, b) => (a.probe?.latencyMs ?? Number.POSITIVE_INFINITY) - (b.probe?.latencyMs ?? Number.POSITIVE_INFINITY),
+      )
+
+    if (online[0]) {
+      return online[0].item.url
+    }
+
+    return pairHostOptions[0]?.url ?? null
+  }, [pairHostOptions, pairHostProbes])
   const headerTitle = activeServer?.name ?? "No server configured"
   let headerDotStyle = styles.serverStatusOffline
   if (activeServer?.status === "online") {
@@ -1899,6 +2048,12 @@ export default function DictationScreen() {
   const handleReplayOnboarding = useCallback(() => {
     setWhisperSettingsOpen(false)
     setScanOpen(false)
+    setPairSelectionOpen(false)
+    setPendingPair(null)
+    setPairHostOptions([])
+    setPairHostProbes({})
+    setSelectedPairHostURL(null)
+    setIsConnectingPairHost(false)
     setDropdownMode("none")
     setOnboardingStep(0)
     setMicrophonePermissionState(permissionGranted ? "granted" : "idle")
@@ -1909,54 +2064,82 @@ export default function DictationScreen() {
     void FileSystem.deleteAsync(ONBOARDING_STATE_FILE, { idempotent: true }).catch(() => {})
   }, [permissionGranted])
 
-  const connectPairPayload = useCallback(
-    (rawData: string, source: "scan" | "link") => {
-      const fromScan = source === "scan"
-      if (fromScan && scanLockRef.current) return
+  const closePairSelection = useCallback(() => {
+    setPairSelectionOpen(false)
+    setPendingPair(null)
+    setPairHostOptions([])
+    setPairHostProbes({})
+    setSelectedPairHostURL(null)
+    setIsConnectingPairHost(false)
+    pairProbeRunRef.current += 1
+  }, [])
 
+  const handleConnectSelectedPairHost = useCallback(() => {
+    if (!pendingPair || !selectedPairHostURL || isConnectingPairHost) {
+      return
+    }
+
+    setIsConnectingPairHost(true)
+    const ok = addServer(selectedPairHostURL, pendingPair.relayURL, pendingPair.relaySecret, pendingPair.serverID)
+
+    if (!ok) {
+      Alert.alert("Could not add server", "The selected host could not be added. Try another host.")
+      setIsConnectingPairHost(false)
+      return
+    }
+
+    closePairSelection()
+    void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {})
+  }, [addServer, closePairSelection, isConnectingPairHost, pendingPair, selectedPairHostURL])
+
+  const handleRescanFromPairSelection = useCallback(() => {
+    closePairSelection()
+    scanLockRef.current = false
+    void handleStartScan()
+  }, [closePairSelection, handleStartScan])
+
+  const connectPairPayload = useCallback((rawData: string, source: "scan" | "link") => {
+    const fromScan = source === "scan"
+    if (fromScan && scanLockRef.current) return
+
+    if (fromScan) {
+      scanLockRef.current = true
+    }
+
+    const pair = parsePair(rawData)
+    if (!pair) {
       if (fromScan) {
-        scanLockRef.current = true
+        void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {})
+        setTimeout(() => {
+          scanLockRef.current = false
+        }, 750)
       }
+      return
+    }
 
-      const pair = parsePair(rawData)
-      if (!pair) {
-        if (fromScan) {
-          void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {})
-          setTimeout(() => {
-            scanLockRef.current = false
-          }, 750)
-        }
-        return
+    const options = normalizePairHosts(pair.hosts)
+    if (!options.length) {
+      if (fromScan) {
+        scanLockRef.current = false
       }
+      Alert.alert("No valid hosts found", "The QR payload did not include any valid server hosts.")
+      return
+    }
 
-      void pickHost(pair.hosts)
-        .then((host) => {
-          if (!host) {
-            if (fromScan) {
-              scanLockRef.current = false
-            }
-            return
-          }
+    if (fromScan) {
+      setScanOpen(false)
+    }
 
-          const ok = addServer(host, pair.relayURL, pair.relaySecret, pair.serverID)
-          if (!ok) {
-            if (fromScan) {
-              scanLockRef.current = false
-            }
-            return
-          }
+    setPendingPair(pair)
+    setPairHostOptions(options)
+    setSelectedPairHostURL(options[0]?.url ?? null)
+    setPairHostProbes(Object.fromEntries(options.map((item) => [item.url, { status: "checking" as const }])))
+    setPairSelectionOpen(true)
 
-          setScanOpen(false)
-          void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {})
-        })
-        .catch(() => {
-          if (fromScan) {
-            scanLockRef.current = false
-          }
-        })
-    },
-    [addServer],
-  )
+    if (fromScan) {
+      scanLockRef.current = false
+    }
+  }, [])
 
   const handleScan = useCallback(
     (event: Scan) => {
@@ -1969,6 +2152,83 @@ export default function DictationScreen() {
     if (scanOpen) return
     scanLockRef.current = false
   }, [scanOpen])
+
+  useEffect(() => {
+    if (!pairSelectionOpen || !pairHostOptions.length) {
+      return
+    }
+
+    const runID = pairProbeRunRef.current + 1
+    pairProbeRunRef.current = runID
+
+    setPairHostProbes((prev) => {
+      const next: Record<string, PairHostProbe> = {}
+      for (const option of pairHostOptions) {
+        next[option.url] = prev[option.url]?.status === "online" ? prev[option.url] : { status: "checking" }
+      }
+      return next
+    })
+
+    pairHostOptions.forEach((option) => {
+      void (async () => {
+        const controller = new AbortController()
+        const timeout = setTimeout(() => controller.abort(), 2800)
+        const startedAt = Date.now()
+
+        try {
+          const response = await fetch(`${option.url}/health`, {
+            method: "GET",
+            signal: controller.signal,
+          })
+          if (pairProbeRunRef.current !== runID) return
+
+          if (response.ok) {
+            setPairHostProbes((prev) => ({
+              ...prev,
+              [option.url]: {
+                status: "online",
+                latencyMs: Math.max(1, Date.now() - startedAt),
+              },
+            }))
+            return
+          }
+
+          setPairHostProbes((prev) => ({
+            ...prev,
+            [option.url]: {
+              status: "offline",
+              note: `HTTP ${response.status}`,
+            },
+          }))
+        } catch (err) {
+          if (pairProbeRunRef.current !== runID) return
+
+          const aborted = err instanceof Error && err.name === "AbortError"
+          let note = aborted ? "Timed out" : "Unavailable"
+          if (!aborted) {
+            try {
+              const parsed = new URL(option.url)
+              if (Platform.OS === "ios" && parsed.protocol === "http:" && !looksLikeLocalHost(parsed.hostname)) {
+                note = "ATS blocked"
+              }
+            } catch {
+              // ignore parse failure and keep default note
+            }
+          }
+
+          setPairHostProbes((prev) => ({
+            ...prev,
+            [option.url]: {
+              status: "offline",
+              note,
+            },
+          }))
+        } finally {
+          clearTimeout(timeout)
+        }
+      })()
+    })
+  }, [pairHostOptions, pairSelectionOpen])
 
   useEffect(() => {
     let active = true
@@ -2859,6 +3119,109 @@ export default function DictationScreen() {
               <Text style={styles.scanHint}>Camera permission is required to scan setup QR codes.</Text>
             </View>
           )}
+        </SafeAreaView>
+      </Modal>
+
+      <Modal
+        visible={pairSelectionOpen}
+        animationType="slide"
+        presentationStyle="formSheet"
+        onRequestClose={closePairSelection}
+      >
+        <SafeAreaView style={styles.pairSelectRoot}>
+          <View style={styles.pairSelectTop}>
+            <View style={styles.pairSelectTitleBlock}>
+              <Text style={styles.pairSelectTitle}>Choose server host</Text>
+              <Text style={styles.pairSelectSubtitle}>Select the best network route for this server.</Text>
+            </View>
+            <Pressable onPress={closePairSelection}>
+              <Text style={styles.pairSelectClose}>Close</Text>
+            </Pressable>
+          </View>
+
+          <ScrollView style={styles.pairSelectList} contentContainerStyle={styles.pairSelectListContent}>
+            {pairHostOptions.map((option, index) => {
+              const probe = pairHostProbes[option.url]
+              const selected = selectedPairHostURL === option.url
+              const recommended = recommendedPairHostURL === option.url
+              let dotStyle = styles.pairSelectDotChecking
+              if (probe?.status === "online") {
+                dotStyle = styles.pairSelectDotOnline
+              } else if (probe?.status === "offline") {
+                dotStyle = styles.pairSelectDotOffline
+              }
+
+              return (
+                <Pressable
+                  key={option.url}
+                  onPress={() => setSelectedPairHostURL(option.url)}
+                  style={({ pressed }) => [
+                    styles.pairSelectRow,
+                    selected && styles.pairSelectRowSelected,
+                    index === pairHostOptions.length - 1 && styles.pairSelectRowLast,
+                    pressed && styles.clearButtonPressed,
+                  ]}
+                >
+                  <View style={styles.pairSelectRowMain}>
+                    <View style={styles.pairSelectLeftCol}>
+                      <View style={[styles.pairSelectDot, dotStyle]} />
+                      <View style={styles.pairSelectRowCopy}>
+                        <View style={styles.pairSelectRowTitleLine}>
+                          <Text style={styles.pairSelectHostLabel} numberOfLines={1}>
+                            {option.label}
+                          </Text>
+                          {recommended ? <Text style={styles.pairSelectRecommended}>recommended</Text> : null}
+                        </View>
+                        <Text style={styles.pairSelectHostMeta}>{pairHostKindLabel(option.kind)}</Text>
+                        <Text style={styles.pairSelectProbeMeta}>{pairProbeSummary(probe)}</Text>
+                        <Text style={styles.pairSelectHostURL} numberOfLines={1} ellipsizeMode="middle">
+                          {option.url}
+                        </Text>
+                      </View>
+                    </View>
+
+                    <View style={styles.pairSelectRightCol}>
+                      <Text style={styles.pairSelectLatency}>{pairProbeLabel(probe)}</Text>
+                      {selected ? (
+                        <SymbolView
+                          name={{
+                            ios: "checkmark",
+                            android: "check",
+                            web: "check",
+                          }}
+                          size={13}
+                          tintColor="#C5C5C5"
+                        />
+                      ) : null}
+                    </View>
+                  </View>
+                </Pressable>
+              )
+            })}
+          </ScrollView>
+
+          <View style={styles.pairSelectFooter}>
+            <Pressable
+              onPress={handleConnectSelectedPairHost}
+              disabled={!selectedPairHostURL || isConnectingPairHost}
+              style={({ pressed }) => [
+                styles.pairSelectPrimaryButton,
+                (!selectedPairHostURL || isConnectingPairHost) && styles.pairSelectPrimaryButtonDisabled,
+                pressed && styles.clearButtonPressed,
+              ]}
+            >
+              <Text style={styles.pairSelectPrimaryButtonText}>
+                {isConnectingPairHost ? "Connecting..." : "Connect selected host"}
+              </Text>
+            </Pressable>
+
+            <Pressable
+              onPress={handleRescanFromPairSelection}
+              style={({ pressed }) => [pressed && styles.clearButtonPressed]}
+            >
+              <Text style={styles.pairSelectSecondaryAction}>Scan again</Text>
+            </Pressable>
+          </View>
         </SafeAreaView>
       </Modal>
     </SafeAreaView>
@@ -3846,6 +4209,170 @@ const styles = StyleSheet.create({
     color: "#A6ABBA",
     fontSize: 14,
     textAlign: "center",
+  },
+  pairSelectRoot: {
+    flex: 1,
+    backgroundColor: "#121212",
+    paddingHorizontal: 16,
+    paddingTop: 12,
+  },
+  pairSelectTop: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+    marginBottom: 8,
+  },
+  pairSelectTitleBlock: {
+    flex: 1,
+    gap: 4,
+  },
+  pairSelectTitle: {
+    color: "#E8EAF0",
+    fontSize: 18,
+    fontWeight: "700",
+  },
+  pairSelectSubtitle: {
+    color: "#A3A3A3",
+    fontSize: 13,
+    fontWeight: "500",
+  },
+  pairSelectClose: {
+    color: "#C5C5C5",
+    fontSize: 15,
+    fontWeight: "600",
+  },
+  pairSelectList: {
+    flex: 1,
+  },
+  pairSelectListContent: {
+    paddingBottom: 12,
+  },
+  pairSelectRow: {
+    minHeight: 74,
+    borderBottomWidth: 1,
+    borderBottomColor: "#242424",
+    paddingVertical: 10,
+    paddingHorizontal: 10,
+  },
+  pairSelectRowSelected: {
+    backgroundColor: "#171717",
+  },
+  pairSelectRowLast: {
+    borderBottomColor: "#242424",
+  },
+  pairSelectRowMain: {
+    width: "100%",
+    flexDirection: "row",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    gap: 12,
+  },
+  pairSelectLeftCol: {
+    flex: 1,
+    minWidth: 0,
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 10,
+  },
+  pairSelectDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    marginTop: 6,
+  },
+  pairSelectDotChecking: {
+    backgroundColor: "#6F778A",
+  },
+  pairSelectDotOnline: {
+    backgroundColor: "#5CB76D",
+  },
+  pairSelectDotOffline: {
+    backgroundColor: "#E35B5B",
+  },
+  pairSelectRowCopy: {
+    flex: 1,
+    minWidth: 0,
+    gap: 2,
+  },
+  pairSelectRowTitleLine: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  pairSelectHostLabel: {
+    color: "#ECECEC",
+    fontSize: 15,
+    fontWeight: "600",
+    flexShrink: 1,
+  },
+  pairSelectRecommended: {
+    color: "#D5A79F",
+    fontSize: 10,
+    fontWeight: "700",
+    letterSpacing: 0.4,
+    textTransform: "uppercase",
+  },
+  pairSelectHostMeta: {
+    color: "#9F9F9F",
+    fontSize: 12,
+    fontWeight: "500",
+  },
+  pairSelectProbeMeta: {
+    color: "#B8B8B8",
+    fontSize: 12,
+    fontWeight: "500",
+  },
+  pairSelectHostURL: {
+    color: "#7E7E7E",
+    fontSize: 11,
+    fontWeight: "500",
+  },
+  pairSelectLatency: {
+    color: "#D4D4D4",
+    fontSize: 13,
+    fontWeight: "700",
+    minWidth: 76,
+    textAlign: "right",
+  },
+  pairSelectRightCol: {
+    minWidth: 76,
+    flexShrink: 0,
+    alignItems: "flex-end",
+    gap: 8,
+    marginLeft: 10,
+    paddingTop: 2,
+  },
+  pairSelectFooter: {
+    borderTopWidth: 1,
+    borderTopColor: "#242424",
+    paddingTop: 12,
+    paddingBottom: 10,
+    gap: 8,
+  },
+  pairSelectPrimaryButton: {
+    height: 46,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#1D6FF4",
+    borderWidth: 2,
+    borderColor: "#1557C3",
+  },
+  pairSelectPrimaryButtonDisabled: {
+    opacity: 0.6,
+  },
+  pairSelectPrimaryButtonText: {
+    color: "#FFFFFF",
+    fontSize: 15,
+    fontWeight: "700",
+  },
+  pairSelectSecondaryAction: {
+    color: "#A8A8A8",
+    fontSize: 14,
+    fontWeight: "600",
+    textAlign: "center",
+    paddingVertical: 8,
   },
   sendSlot: {
     height: CONTROL_HEIGHT,

@@ -142,7 +142,6 @@ function list(hostname: string, port: number, advertised: string[] = []) {
   advertised.forEach(addPreferred)
 
   add(hostname)
-  add("127.0.0.1")
 
   const nets = Object.values(os.networkInterfaces())
     .flatMap((item) => item ?? [])

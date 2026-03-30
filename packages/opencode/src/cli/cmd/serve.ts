@@ -1,4 +1,4 @@
-import { randomBytes } from "node:crypto"
+import { createHash, randomBytes } from "node:crypto"
 import os from "node:os"
 import { Server } from "../../server/server"
 import { cmd } from "./cmd"
@@ -8,7 +8,10 @@ import { Workspace } from "../../control-plane/workspace"
 import { Project } from "../../project/project"
 import { Installation } from "../../installation"
 import { PushRelay } from "../../server/push-relay"
+import { Log } from "../../util/log"
 import * as QRCode from "qrcode"
+
+const log = Log.create({ service: "serve" })
 
 function ipTier(address: string): number {
   const parts = address.split(".")
@@ -70,7 +73,6 @@ function hosts(hostname: string, port: number, advertised: string[] = []) {
   advertised.forEach(addPreferred)
 
   add(hostname)
-  add("127.0.0.1")
   Object.values(os.networkInterfaces())
     .flatMap((item) => item ?? [])
     .filter((item) => item.family === "IPv4" && !item.internal)
@@ -82,6 +84,11 @@ function hosts(hostname: string, port: number, advertised: string[] = []) {
 
 function pairLink(pair: unknown) {
   return `mobilevoice:///?pair=${encodeURIComponent(JSON.stringify(pair))}`
+}
+
+function secretHash(input: string) {
+  if (!input) return "none"
+  return `${createHash("sha256").update(input).digest("hex").slice(0, 12)}...`
 }
 
 export const ServeCommand = cmd({
@@ -158,10 +165,23 @@ export const ServeCommand = cmd({
       if (pair) {
         console.log("experimental push relay enabled")
         const link = pairLink(pair)
-        const code = await QRCode.toString(link, {
-          type: "terminal",
+        const qrConfig = {
+          type: "terminal" as const,
           small: true,
-          errorCorrectionLevel: "M",
+          errorCorrectionLevel: "M" as const,
+        }
+        log.info("pair qr", {
+          relayURL: pair.relayURL,
+          relaySecretHash: secretHash(pair.relaySecret),
+          serverID: pair.serverID,
+          hosts: pair.hosts,
+          hostCount: pair.hosts.length,
+          hasLoopbackHost: pair.hosts.some((item) => item.includes("127.0.0.1") || item.includes("localhost")),
+          linkLength: link.length,
+          qr: qrConfig,
+        })
+        const code = await QRCode.toString(link, {
+          ...qrConfig,
         })
         console.log("scan qr code in mobile app or phone camera")
         console.log(code)

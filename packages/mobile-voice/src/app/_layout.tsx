@@ -10,6 +10,8 @@ import {
 LogBox.ignoreLogs([
   "RecordingNotificationManager is not implemented on iOS",
   "`transcribeRealtime` is deprecated, use `RealtimeTranscriber` instead",
+  "Parsed error meta:",
+  "Session activation failed",
 ])
 
 configureNotificationBehavior()

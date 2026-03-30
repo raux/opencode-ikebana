@@ -105,11 +105,7 @@ export function serverBases(input: string): string[] {
     const secure = `https://${url.host}`
     const insecure = `http://${url.host}`
     if (url.protocol === "http:" && !local) {
-      if (tailnet) {
-        list.unshift(secure)
-      } else {
-        list.push(secure)
-      }
+      list.push(secure)
     } else if (url.protocol === "https:" && tailnet) {
       list.push(insecure)
     }
