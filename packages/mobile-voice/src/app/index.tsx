@@ -292,6 +292,34 @@ function findLatestAssistantCompletionText(payload: unknown): string {
   return ""
 }
 
+type SessionItem = {
+  id: string
+  title: string
+  updated: number
+}
+
+type ServerSessionPayload = {
+  id?: unknown
+  title?: unknown
+  time?: {
+    updated?: unknown
+  }
+}
+
+function parseSessionItems(payload: unknown): SessionItem[] {
+  if (!Array.isArray(payload)) return []
+
+  return payload
+    .filter((item): item is ServerSessionPayload => !!item && typeof item === "object")
+    .map((item) => ({
+      id: String(item.id ?? ""),
+      title: String(item.title ?? item.id ?? "Untitled session"),
+      updated: Number(item.time?.updated ?? 0),
+    }))
+    .filter((item) => item.id.length > 0)
+    .sort((a, b) => b.updated - a.updated)
+}
+
 type ServerItem = {
   id: string
   name: string
@@ -302,12 +330,6 @@ type ServerItem = {
   status: "checking" | "online" | "offline"
   sessions: SessionItem[]
   sessionsLoading: boolean
-}
-
-type SessionItem = {
-  id: string
-  title: string
-  updated: number
 }
 
 type MonitorJob = {
@@ -2275,16 +2297,7 @@ export default function DictationScreen() {
       }
 
       const json = sessionsRes.ok ? await sessionsRes.json() : []
-      const sessions: SessionItem[] = Array.isArray(json)
-        ? json
-            .map((item: any) => ({
-              id: String(item.id ?? ""),
-              title: String(item.title ?? item.id ?? "Untitled session"),
-              updated: Number(item?.time?.updated ?? 0),
-            }))
-            .filter((s) => s.id.length > 0)
-            .sort((a, b) => b.updated - a.updated)
-        : []
+      const sessions = parseSessionItems(json)
 
       setServers((prev) =>
         prev.map((s) => (s.id === serverID ? { ...s, status: "online", sessionsLoading: false, sessions } : s)),
