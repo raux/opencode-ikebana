@@ -59,23 +59,7 @@ export const { use: usePermission, provider: PermissionProvider } = createSimple
     })
 
     const [store, setStore, _, ready] = persisted(
-      {
-        ...Persist.global("permission", ["permission.v3"]),
-        migrate(value) {
-          if (!value || typeof value !== "object" || Array.isArray(value)) return value
-
-          const data = value as Record<string, unknown>
-          if (data.autoAccept) return value
-
-          return {
-            ...data,
-            autoAccept:
-              typeof data.autoAcceptEdits === "object" && data.autoAcceptEdits && !Array.isArray(data.autoAcceptEdits)
-                ? data.autoAcceptEdits
-                : {},
-          }
-        },
-      },
+      Persist.global("permission"),
       createStore({
         autoAccept: {} as Record<string, boolean>,
       }),
@@ -206,7 +190,6 @@ export const { use: usePermission, provider: PermissionProvider } = createSimple
       setStore(
         produce((draft) => {
           draft.autoAccept[key] = true
-          delete draft.autoAccept[sessionID]
         }),
       )
 
@@ -230,8 +213,6 @@ export const { use: usePermission, provider: PermissionProvider } = createSimple
       setStore(
         produce((draft) => {
           draft.autoAccept[key] = false
-          if (!directory) return
-          delete draft.autoAccept[sessionID]
         }),
       )
     }

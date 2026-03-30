@@ -123,14 +123,6 @@ const normalizeSessionTabList = (path: ReturnType<typeof createPathHelpers> | un
   })
 }
 
-const normalizeStoredSessionTabs = (key: string, tabs: SessionTabs) => {
-  const path = sessionPath(key)
-  return {
-    all: normalizeSessionTabList(path, tabs.all),
-    active: tabs.active ? normalizeSessionTab(path, tabs.active) : tabs.active,
-  }
-}
-
 export const { use: useLayout, provider: LayoutProvider } = createSimpleContext({
   name: "Layout",
   init: () => {
@@ -138,96 +130,8 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
     const globalSync = useGlobalSync()
     const server = useServer()
     const platform = usePlatform()
-
-    const isRecord = (value: unknown): value is Record<string, unknown> =>
-      typeof value === "object" && value !== null && !Array.isArray(value)
-
-    const migrate = (value: unknown) => {
-      if (!isRecord(value)) return value
-
-      const sidebar = value.sidebar
-      const migratedSidebar = (() => {
-        if (!isRecord(sidebar)) return sidebar
-        if (typeof sidebar.workspaces !== "boolean") return sidebar
-        return {
-          ...sidebar,
-          workspaces: {},
-          workspacesDefault: sidebar.workspaces,
-        }
-      })()
-
-      const review = value.review
-      const fileTree = value.fileTree
-      const migratedFileTree = (() => {
-        if (!isRecord(fileTree)) return fileTree
-        if (fileTree.tab === "changes" || fileTree.tab === "all") return fileTree
-
-        const width = typeof fileTree.width === "number" ? fileTree.width : DEFAULT_FILE_TREE_WIDTH
-        return {
-          ...fileTree,
-          opened: true,
-          width: width === 260 ? DEFAULT_FILE_TREE_WIDTH : width,
-          tab: "changes",
-        }
-      })()
-
-      const migratedReview = (() => {
-        if (!isRecord(review)) return review
-        if (typeof review.panelOpened === "boolean") return review
-
-        const opened = isRecord(fileTree) && typeof fileTree.opened === "boolean" ? fileTree.opened : true
-        return {
-          ...review,
-          panelOpened: opened,
-        }
-      })()
-
-      const sessionTabs = value.sessionTabs
-      const migratedSessionTabs = (() => {
-        if (!isRecord(sessionTabs)) return sessionTabs
-
-        let changed = false
-        const next = Object.fromEntries(
-          Object.entries(sessionTabs).map(([key, tabs]) => {
-            if (!isRecord(tabs) || !Array.isArray(tabs.all)) return [key, tabs]
-
-            const current = {
-              all: tabs.all.filter((tab): tab is string => typeof tab === "string"),
-              active: typeof tabs.active === "string" ? tabs.active : undefined,
-            }
-            const normalized = normalizeStoredSessionTabs(key, current)
-            if (current.all.length !== tabs.all.length) changed = true
-            if (!same(current.all, normalized.all) || current.active !== normalized.active) changed = true
-            if (tabs.active !== undefined && typeof tabs.active !== "string") changed = true
-            return [key, normalized]
-          }),
-        )
-
-        if (!changed) return sessionTabs
-        return next
-      })()
-
-      if (
-        migratedSidebar === sidebar &&
-        migratedReview === review &&
-        migratedFileTree === fileTree &&
-        migratedSessionTabs === sessionTabs
-      ) {
-        return value
-      }
-
-      return {
-        ...value,
-        sidebar: migratedSidebar,
-        review: migratedReview,
-        fileTree: migratedFileTree,
-        sessionTabs: migratedSessionTabs,
-      }
-    }
-
-    const target = Persist.global("layout", ["layout.v6"])
     const [store, setStore, _, ready] = persisted(
-      { ...target, migrate },
+      Persist.global("layout"),
       createStore({
         sidebar: {
           opened: false,
@@ -270,11 +174,7 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
       used: new Map<string, number>(),
     }
 
-    const SESSION_STATE_KEYS = [
-      { key: "prompt", legacy: "prompt", version: "v2" },
-      { key: "terminal", legacy: "terminal", version: "v1" },
-      { key: "file-view", legacy: "file", version: "v1" },
-    ] as const
+    const SESSION_STATE_KEYS = ["comments", "file-view", "prompt", "terminal"] as const
 
     const dropSessionState = (keys: string[]) => {
       for (const key of keys) {
@@ -283,12 +183,8 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
         const session = parts[1]
         if (!dir) continue
 
-        for (const entry of SESSION_STATE_KEYS) {
-          const target = session ? Persist.session(dir, session, entry.key) : Persist.workspace(dir, entry.key)
-          void removePersisted(target, platform)
-
-          const legacyKey = `${dir}/${entry.legacy}${session ? "/" + session : ""}.${entry.version}`
-          void removePersisted({ key: legacyKey }, platform)
+        for (const item of SESSION_STATE_KEYS) {
+          void removePersisted(session ? Persist.session(dir, session, item) : Persist.workspace(dir, item), platform)
         }
       }
     }
@@ -876,7 +772,17 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
       tabs(sessionKey: string | Accessor<string>) {
         const key = createSessionKeyReader(sessionKey, ensureKey)
         const path = createMemo(() => sessionPath(key()))
-        const tabs = createMemo(() => store.sessionTabs[key()] ?? { all: [] })
+        const tabs = createMemo<SessionTabs>(() => {
+          const current = store.sessionTabs[key()]
+          if (!current || !Array.isArray(current.all)) return { all: [] }
+          return {
+            all: normalizeSessionTabList(
+              path(),
+              current.all.filter((tab): tab is string => typeof tab === "string"),
+            ),
+            active: typeof current.active === "string" ? normalizeSessionTab(path(), current.active) : undefined,
+          }
+        })
         const normalize = (tab: string) => normalizeSessionTab(path(), tab)
         const normalizeAll = (all: string[]) => normalizeSessionTabList(path(), all)
         return {
@@ -903,13 +809,13 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
           },
           async open(tab: string) {
             const session = key()
-            const next = nextSessionTabsForOpen(store.sessionTabs[session], normalize(tab))
+            const next = nextSessionTabsForOpen(store.sessionTabs[session] ? tabs() : undefined, normalize(tab))
             setStore("sessionTabs", session, next)
           },
           close(tab: string) {
             const session = key()
-            const current = store.sessionTabs[session]
-            if (!current) return
+            if (!store.sessionTabs[session]) return
+            const current = tabs()
 
             if (tab === "review") {
               if (current.active !== tab) return
@@ -932,8 +838,8 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
           },
           move(tab: string, to: number) {
             const session = key()
-            const current = store.sessionTabs[session]
-            if (!current) return
+            if (!store.sessionTabs[session]) return
+            const current = tabs()
             const index = current.all.findIndex((f) => f === tab)
             if (index === -1) return
             setStore(

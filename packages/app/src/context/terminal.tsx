@@ -4,7 +4,7 @@ import { batch, createEffect, createMemo, createRoot, on, onCleanup } from "soli
 import { useParams } from "@solidjs/router"
 import { useSDK } from "./sdk"
 import type { Platform } from "./platform"
-import { defaultTitle, titleNumber } from "./terminal-title"
+import { defaultTitle } from "./terminal-title"
 import { Persist, persisted, removePersisted } from "@/utils/persist"
 
 export type LocalPTY = {
@@ -33,62 +33,26 @@ function num(value: unknown) {
   return typeof value === "number" && Number.isFinite(value) ? value : undefined
 }
 
-function numberFromTitle(title: string) {
-  return titleNumber(title, MAX_TERMINAL_SESSIONS)
-}
-
-function pty(value: unknown): LocalPTY | undefined {
-  if (!record(value)) return
+function pty(value: unknown): value is LocalPTY {
+  if (!record(value)) return false
 
   const id = text(value.id)
-  if (!id) return
+  if (!id) return false
 
-  const title = text(value.title) ?? ""
+  const title = text(value.title)
   const number = num(value.titleNumber)
-  const rows = num(value.rows)
-  const cols = num(value.cols)
-  const buffer = text(value.buffer)
-  const scrollY = num(value.scrollY)
-  const cursor = num(value.cursor)
-
-  return {
-    id,
-    title,
-    titleNumber: number && number > 0 ? number : (numberFromTitle(title) ?? 0),
-    ...(rows !== undefined ? { rows } : {}),
-    ...(cols !== undefined ? { cols } : {}),
-    ...(buffer !== undefined ? { buffer } : {}),
-    ...(scrollY !== undefined ? { scrollY } : {}),
-    ...(cursor !== undefined ? { cursor } : {}),
-  }
-}
-
-export function migrateTerminalState(value: unknown) {
-  if (!record(value)) return value
-
-  const seen = new Set<string>()
-  const all = (Array.isArray(value.all) ? value.all : []).flatMap((item) => {
-    const next = pty(item)
-    if (!next || seen.has(next.id)) return []
-    seen.add(next.id)
-    return [next]
-  })
-
-  const active = text(value.active)
-
-  return {
-    active: active && seen.has(active) ? active : all[0]?.id,
-    all,
-  }
+  if (!title) return false
+  if (!number || number <= 0) return false
+  if (value.rows !== undefined && num(value.rows) === undefined) return false
+  if (value.cols !== undefined && num(value.cols) === undefined) return false
+  if (value.buffer !== undefined && text(value.buffer) === undefined) return false
+  if (value.scrollY !== undefined && num(value.scrollY) === undefined) return false
+  if (value.cursor !== undefined && num(value.cursor) === undefined) return false
+  return true
 }
 
 export function getWorkspaceTerminalCacheKey(dir: string) {
   return `${dir}:${WORKSPACE_KEY}`
-}
-
-export function getLegacyTerminalStorageKeys(dir: string, legacySessionID?: string) {
-  if (!legacySessionID) return [`${dir}/terminal.v1`]
-  return [`${dir}/terminal/${legacySessionID}.v1`, `${dir}/terminal.v1`]
 }
 
 type TerminalSession = ReturnType<typeof createWorkspaceTerminalSession>
@@ -110,7 +74,7 @@ const trimTerminal = (pty: LocalPTY) => {
   }
 }
 
-export function clearWorkspaceTerminals(dir: string, sessionIDs?: string[], platform?: Platform) {
+export function clearWorkspaceTerminals(dir: string, platform?: Platform) {
   const key = getWorkspaceTerminalCacheKey(dir)
   for (const cache of caches) {
     const entry = cache.get(key)
@@ -118,26 +82,11 @@ export function clearWorkspaceTerminals(dir: string, sessionIDs?: string[], plat
   }
 
   removePersisted(Persist.workspace(dir, "terminal"), platform)
-
-  const legacy = new Set(getLegacyTerminalStorageKeys(dir))
-  for (const id of sessionIDs ?? []) {
-    for (const key of getLegacyTerminalStorageKeys(dir, id)) {
-      legacy.add(key)
-    }
-  }
-  for (const key of legacy) {
-    removePersisted({ key }, platform)
-  }
 }
 
-function createWorkspaceTerminalSession(sdk: ReturnType<typeof useSDK>, dir: string, legacySessionID?: string) {
-  const legacy = getLegacyTerminalStorageKeys(dir, legacySessionID)
-
+function createWorkspaceTerminalSession(sdk: ReturnType<typeof useSDK>, dir: string) {
   const [store, setStore, _, ready] = persisted(
-    {
-      ...Persist.workspace(dir, "terminal", legacy),
-      migrate: migrateTerminalState,
-    },
+    Persist.workspace(dir, "terminal"),
     createStore<{
       active?: string
       all: LocalPTY[]
@@ -146,16 +95,20 @@ function createWorkspaceTerminalSession(sdk: ReturnType<typeof useSDK>, dir: str
     }),
   )
 
+  createEffect(() => {
+    if (!ready()) return
+    const all = store.all.filter(pty)
+    const active =
+      typeof store.active === "string" && all.some((item) => item.id === store.active) ? store.active : all[0]?.id
+    if (all.length === store.all.length && active === store.active) return
+    batch(() => {
+      setStore("all", all)
+      if (active !== store.active) setStore("active", active)
+    })
+  })
+
   const pickNextTerminalNumber = () => {
-    const existingTitleNumbers = new Set(
-      store.all.flatMap((pty) => {
-        const direct = Number.isFinite(pty.titleNumber) && pty.titleNumber > 0 ? pty.titleNumber : undefined
-        if (direct !== undefined) return [direct]
-        const parsed = numberFromTitle(pty.title)
-        if (parsed === undefined) return []
-        return [parsed]
-      }),
-    )
+    const existingTitleNumbers = new Set(store.all.flatMap((pty) => (pty.titleNumber > 0 ? [pty.titleNumber] : [])))
 
     return (
       Array.from({ length: existingTitleNumbers.size + 1 }, (_, index) => index + 1).find(
@@ -382,7 +335,7 @@ export const { use: useTerminal, provider: TerminalProvider } = createSimpleCont
       }
     }
 
-    const loadWorkspace = (dir: string, legacySessionID?: string) => {
+    const loadWorkspace = (dir: string) => {
       // Terminals are workspace-scoped so tabs persist while switching sessions in the same directory.
       const key = getWorkspaceTerminalCacheKey(dir)
       const existing = cache.get(key)
@@ -393,7 +346,7 @@ export const { use: useTerminal, provider: TerminalProvider } = createSimpleCont
       }
 
       const entry = createRoot((dispose) => ({
-        value: createWorkspaceTerminalSession(sdk, dir, legacySessionID),
+        value: createWorkspaceTerminalSession(sdk, dir),
         dispose,
       }))
 
@@ -402,7 +355,7 @@ export const { use: useTerminal, provider: TerminalProvider } = createSimpleCont
       return entry.value
     }
 
-    const workspace = createMemo(() => loadWorkspace(params.dir!, params.id))
+    const workspace = createMemo(() => loadWorkspace(params.dir!))
 
     createEffect(
       on(
@@ -411,7 +364,7 @@ export const { use: useTerminal, provider: TerminalProvider } = createSimpleCont
           if (!prev?.dir) return
           if (next.dir === prev.dir && next.id === prev.id) return
           if (next.dir === prev.dir && next.id) return
-          loadWorkspace(prev.dir, prev.id).trimAll()
+          loadWorkspace(prev.dir).trimAll()
         },
         { defer: true },
       ),

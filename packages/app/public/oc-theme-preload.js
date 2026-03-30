@@ -2,7 +2,7 @@
   var key = "opencode-theme-id"
   var themeId = localStorage.getItem(key) || "oc-2"
 
-  if (themeId === "oc-1") {
+  if (themeId.slice(0, 3) === "oc-" && themeId !== "oc-2") {
     themeId = "oc-2"
     localStorage.setItem(key, themeId)
     localStorage.removeItem("opencode-theme-css-light")

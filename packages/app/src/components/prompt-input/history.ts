@@ -20,8 +20,6 @@ export type PromptHistoryEntry = {
   comments: PromptHistoryComment[]
 }
 
-export type PromptHistoryStoredEntry = Prompt | PromptHistoryEntry
-
 export function canNavigateHistoryAtCursor(direction: "up" | "down", text: string, cursor: number, inHistory = false) {
   const position = Math.max(0, Math.min(cursor, text.length))
   const atStart = position === 0
@@ -59,13 +57,7 @@ export function clonePromptHistoryComments(comments: PromptHistoryComment[]) {
   }))
 }
 
-export function normalizePromptHistoryEntry(entry: PromptHistoryStoredEntry): PromptHistoryEntry {
-  if (Array.isArray(entry)) {
-    return {
-      prompt: clonePromptParts(entry),
-      comments: [],
-    }
-  }
+function clonePromptHistoryEntry(entry: PromptHistoryEntry): PromptHistoryEntry {
   return {
     prompt: clonePromptParts(entry.prompt),
     comments: clonePromptHistoryComments(entry.comments),
@@ -77,7 +69,7 @@ export function promptLength(prompt: Prompt) {
 }
 
 export function prependHistoryEntry(
-  entries: PromptHistoryStoredEntry[],
+  entries: PromptHistoryEntry[],
   prompt: Prompt,
   comments: PromptHistoryComment[] = [],
   max = MAX_HISTORY,
@@ -112,9 +104,7 @@ function isCommentEqual(commentA: PromptHistoryComment, commentB: PromptHistoryC
   )
 }
 
-function isPromptEqual(promptA: PromptHistoryStoredEntry, promptB: PromptHistoryStoredEntry) {
-  const entryA = normalizePromptHistoryEntry(promptA)
-  const entryB = normalizePromptHistoryEntry(promptB)
+function isPromptEqual(entryA: PromptHistoryEntry, entryB: PromptHistoryEntry) {
   if (entryA.prompt.length !== entryB.prompt.length) return false
   for (let i = 0; i < entryA.prompt.length; i++) {
     const partA = entryA.prompt[i]
@@ -149,7 +139,7 @@ function isPromptEqual(promptA: PromptHistoryStoredEntry, promptB: PromptHistory
 
 type HistoryNavInput = {
   direction: "up" | "down"
-  entries: PromptHistoryStoredEntry[]
+  entries: PromptHistoryEntry[]
   historyIndex: number
   currentPrompt: Prompt
   currentComments: PromptHistoryComment[]
@@ -181,7 +171,7 @@ export function navigatePromptHistory(input: HistoryNavInput): HistoryNavResult 
     }
 
     if (input.historyIndex === -1) {
-      const entry = normalizePromptHistoryEntry(input.entries[0])
+      const entry = clonePromptHistoryEntry(input.entries[0])
       return {
         handled: true,
         historyIndex: 0,
@@ -196,7 +186,7 @@ export function navigatePromptHistory(input: HistoryNavInput): HistoryNavResult 
 
     if (input.historyIndex < input.entries.length - 1) {
       const next = input.historyIndex + 1
-      const entry = normalizePromptHistoryEntry(input.entries[next])
+      const entry = clonePromptHistoryEntry(input.entries[next])
       return {
         handled: true,
         historyIndex: next,
@@ -215,7 +205,7 @@ export function navigatePromptHistory(input: HistoryNavInput): HistoryNavResult 
 
   if (input.historyIndex > 0) {
     const next = input.historyIndex - 1
-    const entry = normalizePromptHistoryEntry(input.entries[next])
+    const entry = clonePromptHistoryEntry(input.entries[next])
     return {
       handled: true,
       historyIndex: next,

@@ -45,7 +45,6 @@ import {
   prependHistoryEntry,
   type PromptHistoryComment,
   type PromptHistoryEntry,
-  type PromptHistoryStoredEntry,
   promptLength,
 } from "./prompt-input/history"
 import { createPromptSubmit, type FollowupDraft } from "./prompt-input/submit"
@@ -313,17 +312,17 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   })
 
   const [history, setHistory] = persisted(
-    Persist.global("prompt-history", ["prompt-history.v1"]),
+    Persist.global("prompt-history.v2"),
     createStore<{
-      entries: PromptHistoryStoredEntry[]
+      entries: PromptHistoryEntry[]
     }>({
       entries: [],
     }),
   )
   const [shellHistory, setShellHistory] = persisted(
-    Persist.global("prompt-history-shell", ["prompt-history-shell.v1"]),
+    Persist.global("prompt-history-shell.v2"),
     createStore<{
-      entries: PromptHistoryStoredEntry[]
+      entries: PromptHistoryEntry[]
     }>({
       entries: [],
     }),

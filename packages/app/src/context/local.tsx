@@ -23,26 +23,9 @@ type Saved = {
   session: Record<string, State | undefined>
 }
 
-const WORKSPACE_KEY = "__workspace__"
 const handoff = new Map<string, State>()
 
 const handoffKey = (dir: string, id: string) => `${dir}\n${id}`
-
-const migrate = (value: unknown) => {
-  if (!value || typeof value !== "object") return { session: {} }
-
-  const item = value as {
-    session?: Record<string, State | undefined>
-    pick?: Record<string, State | undefined>
-  }
-
-  if (item.session && typeof item.session === "object") return { session: item.session }
-  if (!item.pick || typeof item.pick !== "object") return { session: {} }
-
-  return {
-    session: Object.fromEntries(Object.entries(item.pick).filter(([key]) => key !== WORKSPACE_KEY)),
-  }
-}
 
 const clone = (value: State | undefined) => {
   if (!value) return undefined
@@ -66,10 +49,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
     const connected = createMemo(() => new Set(providers.connected().map((item) => item.id)))
 
     const [saved, setSaved] = persisted(
-      {
-        ...Persist.workspace(sdk.directory, "model-selection", ["model-selection.v1"]),
-        migrate,
-      },
+      Persist.workspace(sdk.directory, "model-selection"),
       createStore<Saved>({
         session: {},
       }),
