@@ -321,12 +321,14 @@ export function DialogSelect<T>(props: DialogSelectProps<T>) {
                     const gutter = createMemo(() => {
                       if (numberLabel()) {
                         return (
-                          <text
-                            fg={active() ? selectedForeground(theme) : theme.textMuted}
-                            flexShrink={0}
-                          >
-                            {numberLabel()}
-                          </text>
+                          <box flexDirection="row" flexShrink={0}>
+                            <text
+                              fg={active() ? selectedForeground(theme) : current() ? theme.primary : theme.textMuted}
+                              flexShrink={0}
+                            >
+                              {numberLabel()}
+                            </text>
+                          </box>
                         )
                       }
                       return option.gutter
@@ -407,15 +409,15 @@ function Option(props: {
 
   return (
     <>
-      <Show when={props.current}>
-        <text flexShrink={0} fg={props.active ? fg : props.current ? theme.primary : theme.text} marginRight={0}>
-          ●
-        </text>
-      </Show>
-      <Show when={!props.current && props.gutter}>
+      <Show when={props.gutter}>
         <box flexShrink={0} marginRight={0}>
           {props.gutter}
         </box>
+      </Show>
+      <Show when={props.current && !props.gutter}>
+        <text flexShrink={0} fg={props.active ? fg : props.current ? theme.primary : theme.text} marginRight={0}>
+          ●
+        </text>
       </Show>
       <text
         flexGrow={1}
