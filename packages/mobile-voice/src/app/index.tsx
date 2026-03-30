@@ -253,6 +253,27 @@ type PairHostProbe = {
   note?: string
 }
 
+type ReaderBlock =
+  | {
+      type: "text"
+      content: string
+    }
+  | {
+      type: "code"
+      language: string
+      content: string
+    }
+
+type ReaderInlineSegment =
+  | {
+      type: "text"
+      content: string
+    }
+  | {
+      type: "inline_code"
+      content: string
+    }
+
 const AUDIO_SESSION_BUSY_MESSAGE = "Microphone is unavailable while another call is active. End the call and try again."
 
 type Scan = {
@@ -412,6 +433,96 @@ function pairProbeSummary(probe: PairHostProbe | undefined): string {
   return `Health check: ${probe.note ?? "Unavailable"}`
 }
 
+function parseReaderBlocks(input: string): ReaderBlock[] {
+  const normalized = input.replace(/\r\n/g, "\n")
+  const lines = normalized.split("\n")
+
+  const blocks: ReaderBlock[] = []
+  const prose: string[] = []
+  const code: string[] = []
+  let fence: "```" | "~~~" | null = null
+  let language = ""
+
+  const flushProse = () => {
+    const content = prose.join("\n").trim()
+    if (content.length > 0) {
+      blocks.push({ type: "text", content })
+    }
+    prose.length = 0
+  }
+
+  const flushCode = () => {
+    const content = code.join("\n").replace(/\n+$/, "")
+    blocks.push({ type: "code", language, content })
+    code.length = 0
+    language = ""
+    fence = null
+  }
+
+  for (const line of lines) {
+    if (!fence) {
+      const match = /^\s*(```|~~~)(.*)$/.exec(line)
+      if (match) {
+        flushProse()
+        fence = match[1] as "```" | "~~~"
+        language = match[2]?.trim().split(/\s+/)[0] ?? ""
+      } else {
+        prose.push(line)
+      }
+      continue
+    }
+
+    if (line.trimStart().startsWith(fence)) {
+      flushCode()
+      continue
+    }
+
+    code.push(line)
+  }
+
+  if (fence) {
+    prose.push(`${fence}${language ? language : ""}`)
+    prose.push(...code)
+  }
+
+  flushProse()
+
+  return blocks
+}
+
+function parseReaderInlineSegments(input: string): ReaderInlineSegment[] {
+  const segments: ReaderInlineSegment[] = []
+  const pattern = /(`+|~+)([^`~\n]+?)\1/g
+  let cursor = 0
+
+  for (const match of input.matchAll(pattern)) {
+    const full = match[0] ?? ""
+    const code = match[2] ?? ""
+    const start = match.index ?? 0
+    const end = start + full.length
+
+    if (start > cursor) {
+      segments.push({ type: "text", content: input.slice(cursor, start) })
+    }
+
+    if (code.length > 0) {
+      segments.push({ type: "inline_code", content: code })
+    }
+
+    cursor = end
+  }
+
+  if (cursor < input.length) {
+    segments.push({ type: "text", content: input.slice(cursor) })
+  }
+
+  if (segments.length === 0) {
+    segments.push({ type: "text", content: input })
+  }
+
+  return segments
+}
+
 function isAudioSessionBusyError(error: unknown): boolean {
   const message = error instanceof Error ? `${error.name} ${error.message}` : String(error ?? "")
   return (
@@ -461,6 +572,8 @@ export default function DictationScreen() {
   const [hasCompletedSession, setHasCompletedSession] = useState(false)
   const [isSending, setIsSending] = useState(false)
   const [agentStateDismissed, setAgentStateDismissed] = useState(false)
+  const [readerModeOpen, setReaderModeOpen] = useState(false)
+  const [readerModeRendered, setReaderModeRendered] = useState(false)
   const [dropdownMode, setDropdownMode] = useState<DropdownMode>("none")
   const [dropdownRenderMode, setDropdownRenderMode] = useState<Exclude<DropdownMode, "none">>("server")
   const [sessionCreateMode, setSessionCreateMode] = useState<"same" | "root" | null>(null)
@@ -1265,7 +1378,19 @@ export default function DictationScreen() {
 
   const handleHideAgentState = useCallback(() => {
     void Haptics.selectionAsync().catch(() => {})
+    setReaderModeOpen(false)
     setAgentStateDismissed(true)
+  }, [])
+
+  const handleOpenReaderMode = useCallback(() => {
+    void Haptics.selectionAsync().catch(() => {})
+    setReaderModeRendered(true)
+    setReaderModeOpen(true)
+  }, [])
+
+  const handleCloseReaderMode = useCallback(() => {
+    void Haptics.selectionAsync().catch(() => {})
+    setReaderModeOpen(false)
   }, [])
 
   const handlePermissionDecision = useCallback(
@@ -1615,8 +1740,11 @@ export default function DictationScreen() {
     : WHISPER_MODEL_LABELS[defaultWhisperModel]
   const hasTranscript = transcribedText.trim().length > 0
   const hasAssistantResponse = latestAssistantResponse.trim().length > 0
+  const readerBlocks = useMemo(() => parseReaderBlocks(latestAssistantResponse), [latestAssistantResponse])
   const activePermissionCard = activePermissionRequest ? buildPermissionCardModel(activePermissionRequest) : null
   const hasPendingPermission = activePermissionRequest !== null && activePermissionCard !== null
+  const readerModeEnabled = readerModeOpen && hasAssistantResponse && !hasPendingPermission
+  const readerModeVisible = readerModeEnabled || readerModeRendered
   const hasAgentActivity = hasAssistantResponse || monitorStatus.trim().length > 0 || monitorJob !== null
   const shouldShowAgentStateCard = !hasPendingPermission && hasAgentActivity && !agentStateDismissed
   const showsCompleteState = monitorStatus.toLowerCase().includes("complete")
@@ -1664,6 +1792,7 @@ export default function DictationScreen() {
   const sendVisibility = useSharedValue(hasTranscript ? 1 : 0)
   const waveformVisibility = useSharedValue(0)
   const serverMenuProgress = useSharedValue(0)
+  const readerExpandProgress = useSharedValue(0)
 
   useEffect(() => {
     recordingProgress.value = withSpring(isRecording ? 1 : 0, {
@@ -1687,6 +1816,34 @@ export default function DictationScreen() {
       easing: isDropdownOpen ? Easing.bezier(0.2, 0.8, 0.2, 1) : Easing.bezier(0.4, 0, 0.2, 1),
     })
   }, [isDropdownOpen, serverMenuProgress])
+
+  useEffect(() => {
+    if (readerModeEnabled) {
+      readerExpandProgress.value = withTiming(1, {
+        duration: 260,
+        easing: Easing.bezier(0.2, 0.8, 0.2, 1),
+      })
+      return
+    }
+
+    if (!readerModeRendered) {
+      readerExpandProgress.value = 0
+      return
+    }
+
+    readerExpandProgress.value = withTiming(
+      0,
+      {
+        duration: 180,
+        easing: Easing.bezier(0.22, 0.61, 0.36, 1),
+      },
+      (finished) => {
+        if (finished) {
+          runOnJS(setReaderModeRendered)(false)
+        }
+      },
+    )
+  }, [readerExpandProgress, readerModeEnabled, readerModeRendered])
 
   useEffect(() => {
     if (dropdownMode !== "none") {
@@ -1829,6 +1986,18 @@ export default function DictationScreen() {
     shadowOpacity: interpolate(serverMenuProgress.value, [0, 1], [0, 0.35], Extrapolation.CLAMP),
     shadowRadius: interpolate(serverMenuProgress.value, [0, 1], [0, 18], Extrapolation.CLAMP),
     elevation: interpolate(serverMenuProgress.value, [0, 1], [0, 16], Extrapolation.CLAMP),
+  }))
+
+  const animatedReaderExpandStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(readerExpandProgress.value, [0, 1], [0, 1], Extrapolation.CLAMP),
+    transform: [
+      {
+        translateY: interpolate(readerExpandProgress.value, [0, 1], [16, 0], Extrapolation.CLAMP),
+      },
+      {
+        scale: interpolate(readerExpandProgress.value, [0, 1], [0.985, 1], Extrapolation.CLAMP),
+      },
+    ],
   }))
 
   const waveformColumnMeta = useMemo(
@@ -2097,6 +2266,12 @@ export default function DictationScreen() {
     scanLockRef.current = false
     void handleStartScan()
   }, [closePairSelection, handleStartScan])
+
+  useEffect(() => {
+    if (latestAssistantResponse.trim().length === 0 || activePermissionRequest !== null) {
+      setReaderModeOpen(false)
+    }
+  }, [activePermissionRequest, latestAssistantResponse])
 
   const connectPairPayload = useCallback((rawData: string, source: "scan" | "link") => {
     const fromScan = source === "scan"
@@ -2725,6 +2900,51 @@ export default function DictationScreen() {
               </View>
             </View>
           </View>
+        ) : readerModeVisible ? (
+          <Animated.View style={[styles.splitCard, styles.readerCard, animatedReaderExpandStyle]}>
+            <View style={styles.readerHeaderRow}>
+              <View style={styles.agentStateTitleWrap}>
+                <View style={styles.agentStateIconWrap}>
+                  {agentStateIcon === "loading" ? (
+                    <ActivityIndicator size="small" color="#91A0C0" />
+                  ) : (
+                    <SymbolView
+                      name={{ ios: "checkmark.circle.fill", android: "check_circle", web: "check_circle" }}
+                      size={16}
+                      tintColor="#91C29D"
+                    />
+                  )}
+                </View>
+                <Text style={styles.replyCardLabel}>Agent</Text>
+              </View>
+              <Pressable onPress={handleCloseReaderMode} hitSlop={8}>
+                <Text style={styles.agentStateClose}>✕</Text>
+              </Pressable>
+            </View>
+
+            <ScrollView style={styles.readerScroll} contentContainerStyle={styles.readerContent}>
+              {readerBlocks.map((block, index) =>
+                block.type === "code" ? (
+                  <View key={`reader-code-${index}`} style={styles.readerCodeBlock}>
+                    {block.language ? <Text style={styles.readerCodeLanguage}>{block.language}</Text> : null}
+                    <Text style={styles.readerCodeText}>{block.content}</Text>
+                  </View>
+                ) : (
+                  <Text key={`reader-text-${index}`} style={styles.readerParagraph}>
+                    {parseReaderInlineSegments(block.content).map((segment, segmentIndex) =>
+                      segment.type === "inline_code" ? (
+                        <Text key={`reader-inline-${index}-${segmentIndex}`} style={styles.readerInlineCode}>
+                          {segment.content}
+                        </Text>
+                      ) : (
+                        <Text key={`reader-copy-${index}-${segmentIndex}`}>{segment.content}</Text>
+                      ),
+                    )}
+                  </Text>
+                ),
+              )}
+            </ScrollView>
+          </Animated.View>
         ) : shouldShowAgentStateCard ? (
           <View style={styles.splitCardStack}>
             <View style={[styles.splitCard, styles.replyCard]}>
@@ -2743,9 +2963,16 @@ export default function DictationScreen() {
                   </View>
                   <Text style={styles.replyCardLabel}>Agent</Text>
                 </View>
-                <Pressable onPress={handleHideAgentState} hitSlop={8}>
-                  <Text style={styles.agentStateClose}>✕</Text>
-                </Pressable>
+                <View style={styles.agentStateActions}>
+                  {hasAssistantResponse ? (
+                    <Pressable onPress={handleOpenReaderMode} hitSlop={8}>
+                      <Text style={styles.agentStateReader}>Reader</Text>
+                    </Pressable>
+                  ) : null}
+                  <Pressable onPress={handleHideAgentState} hitSlop={8}>
+                    <Text style={styles.agentStateClose}>✕</Text>
+                  </Pressable>
+                </View>
               </View>
               <ScrollView style={styles.replyScroll} contentContainerStyle={styles.replyContent}>
                 <Text style={styles.replyText}>{agentStateText}</Text>
@@ -3842,6 +4069,63 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: "600",
   },
+  readerCard: {
+    paddingTop: 14,
+  },
+  readerHeaderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginHorizontal: 20,
+    marginBottom: 8,
+  },
+  readerScroll: {
+    flex: 1,
+  },
+  readerContent: {
+    paddingHorizontal: 20,
+    paddingBottom: 18,
+    gap: 14,
+  },
+  readerParagraph: {
+    color: "#E8EDF8",
+    fontSize: 22,
+    fontWeight: "500",
+    lineHeight: 32,
+  },
+  readerInlineCode: {
+    color: "#F9E5C8",
+    backgroundColor: "#262321",
+    borderWidth: 1,
+    borderColor: "#3B332D",
+    borderRadius: 6,
+    paddingHorizontal: 5,
+    fontSize: 22,
+    lineHeight: 32,
+    fontFamily: Platform.select({ ios: "Menlo", android: "monospace", web: "monospace" }),
+  },
+  readerCodeBlock: {
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "#2D2F35",
+    backgroundColor: "#161A1E",
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    gap: 8,
+  },
+  readerCodeLanguage: {
+    color: "#97A5C2",
+    fontSize: 11,
+    fontWeight: "700",
+    letterSpacing: 0.8,
+    textTransform: "uppercase",
+  },
+  readerCodeText: {
+    color: "#DDE6F7",
+    fontSize: 22,
+    lineHeight: 32,
+    fontFamily: Platform.select({ ios: "Menlo", android: "monospace", web: "monospace" }),
+  },
   agentStateHeaderRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -3859,6 +4143,17 @@ const styles = StyleSheet.create({
     height: 16,
     alignItems: "center",
     justifyContent: "center",
+  },
+  agentStateActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 14,
+  },
+  agentStateReader: {
+    color: "#8FA4CC",
+    fontSize: 13,
+    fontWeight: "700",
+    letterSpacing: 0.2,
   },
   agentStateClose: {
     color: "#8D97AB",
