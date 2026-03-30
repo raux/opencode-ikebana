@@ -713,7 +713,7 @@ export default function DictationScreen() {
 
   useEffect(() => {
     let mounted = true
-    ;(async () => {
+    void (async () => {
       try {
         const data = await FileSystem.readAsStringAsync(SERVER_STATE_FILE)
         if (!mounted || !data) return
@@ -740,7 +740,7 @@ export default function DictationScreen() {
   useEffect(() => {
     let mounted = true
 
-    ;(async () => {
+    void (async () => {
       let complete = false
 
       try {
@@ -768,7 +768,7 @@ export default function DictationScreen() {
         }
 
         if (complete) {
-          FileSystem.writeAsStringAsync(ONBOARDING_STATE_FILE, JSON.stringify({ completed: true })).catch(() => {})
+          void FileSystem.writeAsStringAsync(ONBOARDING_STATE_FILE, JSON.stringify({ completed: true })).catch(() => {})
         }
       }
 
@@ -786,7 +786,7 @@ export default function DictationScreen() {
   useEffect(() => {
     if (!restoredRef.current) return
     const payload = toSaved(servers, activeServerId, activeSessionId)
-    FileSystem.writeAsStringAsync(SERVER_STATE_FILE, JSON.stringify(payload)).catch(() => {})
+    void FileSystem.writeAsStringAsync(SERVER_STATE_FILE, JSON.stringify(payload)).catch(() => {})
   }, [activeServerId, activeSessionId, servers])
 
   useEffect(() => {
@@ -858,7 +858,7 @@ export default function DictationScreen() {
 
   // Set up audio session and check microphone permissions on mount.
   useEffect(() => {
-    ;(async () => {
+    void (async () => {
       try {
         AudioManager.setAudioSessionOptions({
           iosCategory: "playAndRecord",
@@ -986,7 +986,7 @@ export default function DictationScreen() {
   useEffect(() => {
     let mounted = true
 
-    ;(async () => {
+    void (async () => {
       await FileSystem.makeDirectoryAsync(WHISPER_MODELS_DIR, { intermediates: true }).catch(() => {})
 
       let nextDefaultModel: WhisperModelID = DEFAULT_WHISPER_MODEL
@@ -1033,7 +1033,7 @@ export default function DictationScreen() {
   useEffect(() => {
     if (!whisperRestoredRef.current) return
     const payload: WhisperSavedState = { defaultModel: defaultWhisperModel, mode: transcriptionMode }
-    FileSystem.writeAsStringAsync(WHISPER_SETTINGS_FILE, JSON.stringify(payload)).catch(() => {})
+    void FileSystem.writeAsStringAsync(WHISPER_SETTINGS_FILE, JSON.stringify(payload)).catch(() => {})
   }, [defaultWhisperModel, transcriptionMode])
 
   useEffect(() => {
@@ -1061,10 +1061,10 @@ export default function DictationScreen() {
       whisperContextModelRef.current = null
 
       if (context) {
-        context.release().catch(() => {})
+        void context.release().catch(() => {})
       }
 
-      releaseAllWhisper().catch(() => {})
+      void releaseAllWhisper().catch(() => {})
     }
   }, [])
 
@@ -1101,7 +1101,7 @@ export default function DictationScreen() {
   useEffect(() => {
     let active = true
 
-    ;(async () => {
+    void (async () => {
       try {
         if (Platform.OS !== "ios") return
         const existing = await Notifications.getPermissionsAsync()
@@ -1334,7 +1334,7 @@ export default function DictationScreen() {
       }
 
       finalizeRecordingState()
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {})
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {})
     }
   }, [
     defaultWhisperModel,
@@ -1350,7 +1350,7 @@ export default function DictationScreen() {
   const stopRecording = useCallback(() => {
     if (!isRecordingRef.current && !isStartingRef.current) return
 
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {})
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {})
 
     const baseAtStop = normalizeTranscriptSessions(baseTextRef.current)
     const englishOnlyModel = isEnglishOnlyWhisperModel(defaultWhisperModel)
@@ -1451,7 +1451,7 @@ export default function DictationScreen() {
   const sendOutProgress = useSharedValue(0)
 
   const handleClearTranscript = useCallback(() => {
-    Haptics.selectionAsync().catch(() => {})
+    void Haptics.selectionAsync().catch(() => {})
 
     clearIconRotation.value = withSequence(
       withTiming(-30, { duration: 90 }),
@@ -1472,7 +1472,7 @@ export default function DictationScreen() {
   }, [clearIconRotation, clearWaveform, sendOutProgress, stopRecording])
 
   const handleHideAgentState = useCallback(() => {
-    Haptics.selectionAsync().catch(() => {})
+    void Haptics.selectionAsync().catch(() => {})
     setAgentStateDismissed(true)
   }, [])
 
@@ -1488,7 +1488,7 @@ export default function DictationScreen() {
   }, [clearWaveform, stopRecording])
 
   const handleOpenWhisperSettings = useCallback(() => {
-    Haptics.selectionAsync().catch(() => {})
+    void Haptics.selectionAsync().catch(() => {})
     setDropdownMode("none")
     setWhisperSettingsOpen(true)
   }, [])
@@ -1497,7 +1497,7 @@ export default function DictationScreen() {
     async (modelID: WhisperModelID) => {
       const ok = await downloadWhisperModel(modelID)
       if (ok) {
-        Haptics.selectionAsync().catch(() => {})
+        void Haptics.selectionAsync().catch(() => {})
       }
     },
     [downloadWhisperModel],
@@ -1513,7 +1513,7 @@ export default function DictationScreen() {
         await ensureWhisperModelReady(modelID)
         setDefaultWhisperModel(modelID)
         setWhisperError("")
-        Haptics.selectionAsync().catch(() => {})
+        void Haptics.selectionAsync().catch(() => {})
       } catch (error) {
         const message = error instanceof Error ? error.message : "Unable to switch Whisper model"
         setWhisperError(message)
@@ -1557,7 +1557,7 @@ export default function DictationScreen() {
         }
       }
 
-      Haptics.selectionAsync().catch(() => {})
+      void Haptics.selectionAsync().catch(() => {})
     },
     [
       activeWhisperModel,
@@ -1740,21 +1740,21 @@ export default function DictationScreen() {
       setMonitorStatus(formatMonitorEventLabel(eventType))
 
       if (eventType === "permission") {
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => {})
+        void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => {})
         return
       }
 
       if (eventType === "complete") {
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {})
-        completePlayer.seekTo(0)
-        completePlayer.play()
+        void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {})
+        void completePlayer.seekTo(0)
+        void completePlayer.play()
         stopForegroundMonitor()
         setMonitorJob(null)
         void loadLatestAssistantResponse(job.opencodeBaseURL, job.sessionID)
         return
       }
 
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {})
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {})
       stopForegroundMonitor()
       setMonitorJob(null)
     },
@@ -1770,7 +1770,7 @@ export default function DictationScreen() {
 
       const base = job.opencodeBaseURL.replace(/\/+$/, "")
 
-      ;(async () => {
+      void (async () => {
         try {
           const response = await expoFetch(`${base}/event`, {
             signal: abortController.signal,
@@ -1906,12 +1906,12 @@ export default function DictationScreen() {
         setMonitorStatus("Monitoring (foreground only)")
       }
 
-      sendPlayer.seekTo(0)
-      sendPlayer.play()
+      void sendPlayer.seekTo(0)
+      void sendPlayer.play()
 
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy).catch(() => {})
+      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy).catch(() => {})
       setTimeout(() => {
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {})
+        void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {})
       }, 70)
 
       sendOutProgress.value = withTiming(
@@ -1928,7 +1928,7 @@ export default function DictationScreen() {
       )
     } catch {
       setMonitorStatus("Failed to send prompt")
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {})
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {})
       setIsSending(false)
       sendOutProgress.value = 0
     }
@@ -1951,9 +1951,9 @@ export default function DictationScreen() {
     if (isRecordingRef.current) return
 
     setDropdownMode("none")
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {})
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {})
     isHoldingRef.current = true
-    startRecording()
+    void startRecording()
   }, [startRecording])
 
   const handlePressOut = useCallback(() => {
@@ -2332,7 +2332,7 @@ export default function DictationScreen() {
   const refreshAllServerHealth = useCallback(() => {
     const ids = serversRef.current.map((s) => s.id)
     ids.forEach((id) => {
-      refreshServerStatusAndSessions(id, false)
+      void refreshServerStatusAndSessions(id, false)
     })
   }, [refreshServerStatusAndSessions])
 
@@ -2439,8 +2439,8 @@ export default function DictationScreen() {
       }
 
       if (payload.eventType === "complete" && source === "received") {
-        completePlayer.seekTo(0)
-        completePlayer.play()
+        void completePlayer.seekTo(0)
+        void completePlayer.play()
       }
 
       if (
@@ -2521,7 +2521,7 @@ export default function DictationScreen() {
   }, [appState, syncSessionState])
 
   const toggleServerMenu = useCallback(() => {
-    Haptics.selectionAsync().catch(() => {})
+    void Haptics.selectionAsync().catch(() => {})
     setDropdownMode((prev) => {
       const next = prev === "server" ? "none" : "server"
       if (next === "server") {
@@ -2536,8 +2536,8 @@ export default function DictationScreen() {
 
   const toggleSessionMenu = useCallback(() => {
     if (!activeServer || activeServer.status !== "online") return
-    Haptics.selectionAsync().catch(() => {})
-    refreshServerStatusAndSessions(activeServer.id)
+    void Haptics.selectionAsync().catch(() => {})
+    void refreshServerStatusAndSessions(activeServer.id)
     setDropdownRenderMode("session")
     setDropdownMode((prev) => (prev === "session" ? "none" : "session"))
   }, [activeServer, refreshServerStatusAndSessions])
@@ -2551,7 +2551,7 @@ export default function DictationScreen() {
       setActiveServerId(id)
       setActiveSessionId(null)
       setDropdownMode("none")
-      refreshServerStatusAndSessions(id)
+      void refreshServerStatusAndSessions(id)
     },
     [refreshServerStatusAndSessions],
   )
@@ -2627,7 +2627,7 @@ export default function DictationScreen() {
         setActiveServerId(existing.id)
         setActiveSessionId(null)
         setDropdownMode("none")
-        refreshServerStatusAndSessions(existing.id)
+        void refreshServerStatusAndSessions(existing.id)
         return true
       }
 
@@ -2648,7 +2648,7 @@ export default function DictationScreen() {
       setActiveServerId(id)
       setActiveSessionId(null)
       setDropdownMode("none")
-      refreshServerStatusAndSessions(id)
+      void refreshServerStatusAndSessions(id)
       return true
     },
     [refreshServerStatusAndSessions],
@@ -2701,7 +2701,7 @@ export default function DictationScreen() {
   const completeOnboarding = useCallback(
     (openScanner: boolean) => {
       setOnboardingComplete(true)
-      FileSystem.writeAsStringAsync(ONBOARDING_STATE_FILE, JSON.stringify({ completed: true })).catch(() => {})
+      void FileSystem.writeAsStringAsync(ONBOARDING_STATE_FILE, JSON.stringify({ completed: true })).catch(() => {})
 
       if (openScanner) {
         void handleStartScan()
@@ -2720,7 +2720,7 @@ export default function DictationScreen() {
     setLocalNetworkPermissionState("idle")
     setOnboardingReady(true)
     setOnboardingComplete(false)
-    FileSystem.deleteAsync(ONBOARDING_STATE_FILE, { idempotent: true }).catch(() => {})
+    void FileSystem.deleteAsync(ONBOARDING_STATE_FILE, { idempotent: true }).catch(() => {})
   }, [permissionGranted])
 
   const connectPairPayload = useCallback(
@@ -2735,7 +2735,7 @@ export default function DictationScreen() {
       const pair = parsePair(rawData)
       if (!pair) {
         if (fromScan) {
-          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {})
+          void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {})
           setTimeout(() => {
             scanLockRef.current = false
           }, 750)
@@ -2761,7 +2761,7 @@ export default function DictationScreen() {
           }
 
           setScanOpen(false)
-          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {})
+          void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {})
         })
         .catch(() => {
           if (fromScan) {
@@ -2820,9 +2820,9 @@ export default function DictationScreen() {
 
   useEffect(() => {
     if (!activeServerId) return
-    refreshServerStatusAndSessions(activeServerId)
+    void refreshServerStatusAndSessions(activeServerId)
     const timer = setInterval(() => {
-      refreshServerStatusAndSessions(activeServerId)
+      void refreshServerStatusAndSessions(activeServerId)
     }, 15000)
     return () => clearInterval(timer)
   }, [activeServerId, refreshServerStatusAndSessions])
@@ -2859,7 +2859,7 @@ export default function DictationScreen() {
       bundleId,
     })
 
-    Promise.allSettled(
+    void Promise.allSettled(
       list.map(async (server) => {
         const secret = server.relaySecret.trim()
         const relay = server.relayURL
@@ -2904,7 +2904,7 @@ export default function DictationScreen() {
       count: list.length,
     })
 
-    Promise.allSettled(
+    void Promise.allSettled(
       list.map(async (server) => {
         const secret = server.relaySecret.trim()
         const relay = server.relayURL
