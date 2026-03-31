@@ -1,12 +1,10 @@
-import { Effect, Fiber, ScopedCache, Scope, ServiceMap } from "effect"
+import { Effect, ScopedCache, Scope } from "effect"
 import { Instance, type InstanceContext } from "@/project/instance"
+import { bind as bindInstance } from "./instance-bind"
+import { InstanceRef } from "./instance-ref"
 import { registerDisposer } from "./instance-registry"
 
 const TypeId = "~opencode/InstanceState"
-
-export const InstanceRef = ServiceMap.Reference<InstanceContext | undefined>("~opencode/InstanceRef", {
-  defaultValue: () => undefined,
-})
 
 export interface InstanceState<A, E = never, R = never> {
   readonly [TypeId]: typeof TypeId
@@ -14,15 +12,7 @@ export interface InstanceState<A, E = never, R = never> {
 }
 
 export namespace InstanceState {
-  export const bind = <F extends (...args: any[]) => any>(fn: F): F => {
-    try {
-      return Instance.bind(fn)
-    } catch {}
-    const fiber = Fiber.getCurrent()
-    const ctx = fiber ? ServiceMap.getReferenceUnsafe(fiber.services, InstanceRef) : undefined
-    if (!ctx) return fn
-    return ((...args: any[]) => Instance.restore(ctx, () => fn(...args))) as F
-  }
+  export const bind = bindInstance
 
   export const context = Effect.gen(function* () {
     const ref = yield* InstanceRef

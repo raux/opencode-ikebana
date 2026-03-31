@@ -1,7 +1,7 @@
 import { Effect, Layer, ManagedRuntime } from "effect"
 import * as ServiceMap from "effect/ServiceMap"
 import { Instance } from "@/project/instance"
-import { InstanceRef } from "./instance-state"
+import { InstanceRef } from "./instance-ref"
 
 export const memoMap = Layer.makeMemoMapUnsafe()
 

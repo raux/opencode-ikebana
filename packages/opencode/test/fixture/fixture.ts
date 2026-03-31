@@ -7,7 +7,7 @@ import type * as PlatformError from "effect/PlatformError"
 import type * as Scope from "effect/Scope"
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process"
 import type { Config } from "../../src/config/config"
-import { InstanceRef } from "../../src/effect/instance-state"
+import { InstanceRef } from "../../src/effect/instance-ref"
 import { Instance } from "../../src/project/instance"
 import { TestLLMServer } from "../lib/llm-server"
 
@@ -115,8 +115,7 @@ export const provideInstance =
       Effect.promise<A>(async () =>
         Instance.provide({
           directory,
-          fn: () =>
-            Effect.runPromiseWith(services)(self.pipe(Effect.provideService(InstanceRef, Instance.current))),
+          fn: () => Effect.runPromiseWith(services)(self.pipe(Effect.provideService(InstanceRef, Instance.current))),
         }),
       ),
     )
