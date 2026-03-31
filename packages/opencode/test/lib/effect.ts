@@ -8,7 +8,7 @@ type Body<A, E, R> = Effect.Effect<A, E, R> | (() => Effect.Effect<A, E, R>)
 
 const body = <A, E, R>(value: Body<A, E, R>) => Effect.suspend(() => (typeof value === "function" ? value() : value))
 
-const run = <A, E, R, E2>(value: Body<A, E, R | Scope.Scope>, layer: Layer.Layer<R, E2, never>) =>
+const run = <A, E, R, E2, S>(value: Body<A, E, R | Scope.Scope>, layer: Layer.Layer<R, E2, S>) =>
   Effect.gen(function* () {
     const exit = yield* body(value).pipe(Effect.scoped, Effect.provide(layer), Effect.exit)
     if (Exit.isFailure(exit)) {
@@ -19,7 +19,7 @@ const run = <A, E, R, E2>(value: Body<A, E, R | Scope.Scope>, layer: Layer.Layer
     return yield* exit
   }).pipe(Effect.runPromise)
 
-const make = <R, E>(testLayer: Layer.Layer<R, E, never>, liveLayer: Layer.Layer<R, E, never>) => {
+const make = <R, E, S, T>(testLayer: Layer.Layer<R, E, S>, liveLayer: Layer.Layer<R, E, T>) => {
   const effect = <A, E2>(name: string, value: Body<A, E2, R | Scope.Scope>, opts?: number | TestOptions) =>
     test(name, () => run(value, testLayer), opts)
 
@@ -49,5 +49,5 @@ const liveEnv = TestConsole.layer
 
 export const it = make(testEnv, liveEnv)
 
-export const testEffect = <R, E>(layer: Layer.Layer<R, E, never>) =>
+export const testEffect = <R, E, S>(layer: Layer.Layer<R, E, S>) =>
   make(Layer.provideMerge(layer, testEnv), Layer.provideMerge(layer, liveEnv))

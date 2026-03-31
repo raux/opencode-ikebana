@@ -309,8 +309,40 @@ const env = SessionPrompt.layer.pipe(
   Layer.provideMerge(deps),
 )
 
+function makeHttp() {
+  const deps = Layer.mergeAll(
+    Session.defaultLayer,
+    Snapshot.defaultLayer,
+    LLM.defaultLayer,
+    AgentSvc.defaultLayer,
+    Command.defaultLayer,
+    Permission.layer,
+    Plugin.defaultLayer,
+    Config.defaultLayer,
+    filetime,
+    lsp,
+    mcp,
+    AppFileSystem.defaultLayer,
+    status,
+  ).pipe(Layer.provideMerge(infra))
+  const registry = ToolRegistry.layer.pipe(Layer.provideMerge(deps))
+  const trunc = Truncate.layer.pipe(Layer.provideMerge(deps))
+  const proc = SessionProcessor.layer.pipe(Layer.provideMerge(deps))
+  const compact = SessionCompaction.layer.pipe(Layer.provideMerge(proc), Layer.provideMerge(deps))
+  return Layer.mergeAll(
+    TestLLMServer.layer,
+    SessionPrompt.layer.pipe(
+      Layer.provideMerge(compact),
+      Layer.provideMerge(proc),
+      Layer.provideMerge(registry),
+      Layer.provideMerge(trunc),
+      Layer.provideMerge(deps),
+    ),
+  )
+}
+
 const it = testEffect(env)
-const http = testEffect(Layer.mergeAll(NodeFileSystem.layer, CrossSpawnSpawner.defaultLayer, TestLLMServer.layer))
+const http = testEffect(makeHttp())
 const unix = process.platform !== "win32" ? it.effect : it.effect.skip
 
 // Config that registers a custom "test" provider with a "test-model" model
@@ -453,23 +485,21 @@ it.live("loop exits immediately when last assistant has stop finish", () =>
 http.live("loop calls LLM and returns assistant message", () =>
   provideTmpdirServer(
     Effect.fnUntraced(function* ({ llm }) {
-      const chat = yield* Effect.promise(() =>
-        Session.create({
-          title: "Pinned",
-          permission: [{ permission: "*", pattern: "*", action: "allow" }],
-        }),
-      )
-      yield* Effect.promise(() =>
-        SessionPrompt.prompt({
-          sessionID: chat.id,
-          agent: "build",
-          noReply: true,
-          parts: [{ type: "text", text: "hello" }],
-        }),
-      )
+      const prompt = yield* SessionPrompt.Service
+      const sessions = yield* Session.Service
+      const chat = yield* sessions.create({
+        title: "Pinned",
+        permission: [{ permission: "*", pattern: "*", action: "allow" }],
+      })
+      yield* prompt.prompt({
+        sessionID: chat.id,
+        agent: "build",
+        noReply: true,
+        parts: [{ type: "text", text: "hello" }],
+      })
       yield* llm.text("world")
 
-      const result = yield* Effect.promise(() => SessionPrompt.loop({ sessionID: chat.id }))
+      const result = yield* prompt.loop({ sessionID: chat.id })
       expect(result.info.role).toBe("assistant")
       const parts = result.parts.filter((p) => p.type === "text")
       expect(parts.some((p) => p.type === "text" && p.text === "world")).toBe(true)
@@ -479,24 +509,33 @@ http.live("loop calls LLM and returns assistant message", () =>
   ),
 )
 
-it.live("loop continues when finish is tool-calls", () =>
-  provideTmpdirInstance(
-    (dir) =>
-      Effect.gen(function* () {
-        const { test, prompt, chat } = yield* boot()
-        yield* test.reply(...replyToolCalls("first"))
-        yield* test.reply(...replyStop("second"))
-        yield* user(chat.id, "hello")
+http.live("loop continues when finish is tool-calls", () =>
+  provideTmpdirServer(
+    Effect.fnUntraced(function* ({ llm }) {
+      const prompt = yield* SessionPrompt.Service
+      const sessions = yield* Session.Service
+      const session = yield* sessions.create({
+        title: "Pinned",
+        permission: [{ permission: "*", pattern: "*", action: "allow" }],
+      })
+      yield* prompt.prompt({
+        sessionID: session.id,
+        agent: "build",
+        noReply: true,
+        parts: [{ type: "text", text: "hello" }],
+      })
+      yield* llm.tool("first", { value: "first" })
+      yield* llm.text("second")
 
-        const result = yield* prompt.loop({ sessionID: chat.id })
-        expect(yield* test.calls).toBe(2)
-        expect(result.info.role).toBe("assistant")
-        if (result.info.role === "assistant") {
-          expect(result.parts.some((part) => part.type === "text" && part.text === "second")).toBe(true)
-          expect(result.info.finish).toBe("stop")
-        }
-      }),
-    { git: true, config: cfg },
+      const result = yield* prompt.loop({ sessionID: session.id })
+      expect(yield* llm.calls).toBe(2)
+      expect(result.info.role).toBe("assistant")
+      if (result.info.role === "assistant") {
+        expect(result.parts.some((part) => part.type === "text" && part.text === "second")).toBe(true)
+        expect(result.info.finish).toBe("stop")
+      }
+    }),
+    { git: true, config: providerCfg },
   ),
 )
 
@@ -787,7 +826,6 @@ it.live("concurrent loop callers all receive same error result", () =>
       Effect.gen(function* () {
         const { test, prompt, chat } = yield* boot()
 
-        // Push a stream that fails — the loop records the error on the assistant message
         yield* test.push(Stream.fail(new Error("boom")))
         yield* user(chat.id, "hello")
 
@@ -795,7 +833,6 @@ it.live("concurrent loop callers all receive same error result", () =>
           concurrency: "unbounded",
         })
 
-        // Both callers get the same assistant with an error recorded
         expect(a.info.id).toBe(b.info.id)
         expect(a.info.role).toBe("assistant")
         if (a.info.role === "assistant") {
@@ -1040,20 +1077,20 @@ http.live(
   () =>
     provideTmpdirServer(
       Effect.fnUntraced(function* ({ llm }) {
-        const chat = yield* Effect.promise(() =>
-          Session.create({
-            title: "Pinned",
-            permission: [{ permission: "*", pattern: "*", action: "allow" }],
-          }),
-        )
+        const prompt = yield* SessionPrompt.Service
+        const sessions = yield* Session.Service
+        const chat = yield* sessions.create({
+          title: "Pinned",
+          permission: [{ permission: "*", pattern: "*", action: "allow" }],
+        })
         yield* llm.text("after-shell")
 
-        const sh = yield* Effect.promise(() =>
-          SessionPrompt.shell({ sessionID: chat.id, agent: "build", command: "sleep 0.2" }),
-        ).pipe(Effect.forkChild)
+        const sh = yield* prompt
+          .shell({ sessionID: chat.id, agent: "build", command: "sleep 0.2" })
+          .pipe(Effect.forkChild)
         yield* waitMs(50)
 
-        const run = yield* Effect.promise(() => SessionPrompt.loop({ sessionID: chat.id })).pipe(Effect.forkChild)
+        const run = yield* prompt.loop({ sessionID: chat.id }).pipe(Effect.forkChild)
         yield* waitMs(50)
 
         expect(yield* llm.calls).toBe(0)
@@ -1070,7 +1107,7 @@ http.live(
       }),
       { git: true, config: providerCfg },
     ),
-  5_000,
+  3_000,
 )
 
 http.live(
@@ -1078,21 +1115,21 @@ http.live(
   () =>
     provideTmpdirServer(
       Effect.fnUntraced(function* ({ llm }) {
-        const chat = yield* Effect.promise(() =>
-          Session.create({
-            title: "Pinned",
-            permission: [{ permission: "*", pattern: "*", action: "allow" }],
-          }),
-        )
+        const prompt = yield* SessionPrompt.Service
+        const sessions = yield* Session.Service
+        const chat = yield* sessions.create({
+          title: "Pinned",
+          permission: [{ permission: "*", pattern: "*", action: "allow" }],
+        })
         yield* llm.text("done")
 
-        const sh = yield* Effect.promise(() =>
-          SessionPrompt.shell({ sessionID: chat.id, agent: "build", command: "sleep 0.2" }),
-        ).pipe(Effect.forkChild)
+        const sh = yield* prompt
+          .shell({ sessionID: chat.id, agent: "build", command: "sleep 0.2" })
+          .pipe(Effect.forkChild)
         yield* waitMs(50)
 
-        const a = yield* Effect.promise(() => SessionPrompt.loop({ sessionID: chat.id })).pipe(Effect.forkChild)
-        const b = yield* Effect.promise(() => SessionPrompt.loop({ sessionID: chat.id })).pipe(Effect.forkChild)
+        const a = yield* prompt.loop({ sessionID: chat.id }).pipe(Effect.forkChild)
+        const b = yield* prompt.loop({ sessionID: chat.id }).pipe(Effect.forkChild)
         yield* waitMs(50)
 
         expect(yield* llm.calls).toBe(0)
@@ -1110,7 +1147,7 @@ http.live(
       }),
       { git: true, config: providerCfg },
     ),
-  5_000,
+  3_000,
 )
 
 unix(
