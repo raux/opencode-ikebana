@@ -10,9 +10,9 @@ import { NamedError } from "@opencode-ai/util/error"
 import z from "zod"
 import path from "path"
 import { readFileSync, readdirSync, existsSync } from "fs"
-import { Instance } from "../project/instance"
 import { Installation } from "../installation"
 import { Flag } from "../flag/flag"
+import { InstanceState } from "@/effect/instance-state"
 import { iife } from "@/util/iife"
 import { init } from "#db"
 
@@ -144,7 +144,7 @@ export namespace Database {
 
   export function effect(fn: () => any | Promise<any>) {
     try {
-      ctx.use().effects.push(fn)
+      ctx.use().effects.push(InstanceState.bind(fn))
     } catch {
       fn()
     }
@@ -163,10 +163,7 @@ export namespace Database {
     } catch (err) {
       if (err instanceof Context.NotFound) {
         const effects: (() => void | Promise<void>)[] = []
-        let txCallback = (tx: TxOrDb) => ctx.provide({ tx, effects }, () => callback(tx))
-        try {
-          txCallback = Instance.bind(txCallback)
-        } catch {}
+        const txCallback = InstanceState.bind((tx: TxOrDb) => ctx.provide({ tx, effects }, () => callback(tx)))
         const result = Client().transaction(txCallback, { behavior: options?.behavior })
         for (const effect of effects) effect()
         return result as NotPromise<T>

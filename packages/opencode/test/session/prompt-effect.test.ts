@@ -465,9 +465,6 @@ it.live(
         yield* llm.wait(1)
         yield* prompt.cancel(chat.id)
         const exit = yield* Fiber.await(fiber)
-        if (Exit.isFailure(exit)) {
-          for (const err of Cause.prettyErrors(exit.cause)) console.error("DEBUG CANCEL FAIL:", err)
-        }
         expect(Exit.isSuccess(exit)).toBe(true)
         if (Exit.isSuccess(exit)) {
           expect(exit.value.info.role).toBe("assistant")
@@ -631,10 +628,9 @@ it.live(
         yield* llm.fail("boom")
         yield* user(chat.id, "hello")
 
-        const [a, b] = yield* Effect.all(
-          [prompt.loop({ sessionID: chat.id }), prompt.loop({ sessionID: chat.id })],
-          { concurrency: "unbounded" },
-        )
+        const [a, b] = yield* Effect.all([prompt.loop({ sessionID: chat.id }), prompt.loop({ sessionID: chat.id })], {
+          concurrency: "unbounded",
+        })
         expect(a.info.id).toBe(b.info.id)
         expect(a.info.role).toBe("assistant")
       }),
@@ -772,9 +768,7 @@ it.live(
         const fiber = yield* prompt.loop({ sessionID: chat.id }).pipe(Effect.forkChild)
         yield* llm.wait(1)
 
-        const exit = yield* prompt
-          .shell({ sessionID: chat.id, agent: "build", command: "echo hi" })
-          .pipe(Effect.exit)
+        const exit = yield* prompt.shell({ sessionID: chat.id, agent: "build", command: "echo hi" }).pipe(Effect.exit)
         expect(Exit.isFailure(exit)).toBe(true)
         if (Exit.isFailure(exit)) {
           expect(Cause.squash(exit.cause)).toBeInstanceOf(Session.BusyError)
