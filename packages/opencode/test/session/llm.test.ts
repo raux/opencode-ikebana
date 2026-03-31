@@ -1,7 +1,7 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test"
+import { afterAll, beforeAll, beforeEach, describe, expect, spyOn, test } from "bun:test"
 import path from "path"
 import { tool, type ModelMessage } from "ai"
-import { Cause, Exit, Stream } from "effect"
+import { Cause, Effect, Exit, Stream } from "effect"
 import z from "zod"
 import { makeRuntime } from "../../src/effect/run-service"
 import { LLM } from "../../src/session/llm"
@@ -539,6 +539,94 @@ describe("session.llm.stream", () => {
         await Promise.race([pending.requestAborted, timeout(500)]).catch(() => undefined)
       },
     })
+  })
+
+  test("service stream preserves fullStream backpressure", async () => {
+    const release = deferred<void>()
+    let pulled = false
+    const mock = spyOn(LLM, "stream").mockResolvedValue({
+      fullStream: {
+        [Symbol.asyncIterator]() {
+          let i = 0
+          return {
+            next: async () => {
+              if (i === 0) {
+                i += 1
+                return { done: false, value: { type: "start" } as LLM.Event }
+              }
+              if (i === 1) {
+                pulled = true
+                await release.promise
+                i += 1
+                return {
+                  done: false,
+                  value: {
+                    type: "finish",
+                    finishReason: "stop",
+                    rawFinishReason: "stop",
+                    totalUsage: {
+                      inputTokens: 0,
+                      outputTokens: 0,
+                      totalTokens: 0,
+                    },
+                  } as LLM.Event,
+                }
+              }
+              return { done: true, value: undefined }
+            },
+            return: async () => ({ done: true, value: undefined }),
+          }
+        },
+      },
+    } as Awaited<ReturnType<typeof LLM.stream>>)
+
+    await using tmp = await tmpdir()
+    try {
+      await Instance.provide({
+        directory: tmp.path,
+        fn: async () => {
+          const sessionID = SessionID.make("session-test-service-backpressure")
+          const { runPromise } = makeRuntime(LLM.Service, LLM.defaultLayer)
+          await runPromise((svc) =>
+            svc
+              .stream({
+                user: {
+                  id: MessageID.make("user-service-backpressure"),
+                  sessionID,
+                  role: "user",
+                  time: { created: Date.now() },
+                  agent: "test",
+                  model: { providerID: ProviderID.make("test"), modelID: ModelID.make("test") },
+                } satisfies MessageV2.User,
+                sessionID,
+                model: {} as Provider.Model,
+                agent: {
+                  name: "test",
+                  mode: "primary",
+                  options: {},
+                  permission: [{ permission: "*", pattern: "*", action: "allow" }],
+                } satisfies Agent.Info,
+                system: [],
+                messages: [],
+                tools: {},
+              })
+              .pipe(
+                Stream.tap((event) =>
+                  event.type === "start"
+                    ? Effect.sync(() => {
+                        expect(pulled).toBe(false)
+                        release.resolve()
+                      })
+                    : Effect.void,
+                ),
+                Stream.runDrain,
+              ),
+          )
+        },
+      })
+    } finally {
+      mock.mockRestore()
+    }
   })
 
   test("keeps tools enabled by prompt permissions", async () => {

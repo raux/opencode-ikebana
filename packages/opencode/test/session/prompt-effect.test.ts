@@ -532,6 +532,93 @@ it.effect("failed subtask preserves metadata on error tool state", () =>
   ),
 )
 
+it.effect(
+  "task tool preserves session metadata while still running",
+  () =>
+    provideTmpdirInstance(
+      (dir) =>
+        Effect.gen(function* () {
+          const child = SessionID.make("task-child")
+          const init = spyOn(TaskTool, "init").mockResolvedValue({
+            description: "task",
+            parameters: z.object({
+              description: z.string(),
+              prompt: z.string(),
+              subagent_type: z.string(),
+              task_id: z.string().optional(),
+              command: z.string().optional(),
+            }),
+            execute: async (_args, ctx) => {
+              ctx.metadata({
+                title: "inspect bug",
+                metadata: {
+                  sessionId: child,
+                  model: ref,
+                },
+              })
+              return {
+                title: "inspect bug",
+                metadata: {
+                  sessionId: child,
+                  model: ref,
+                },
+                output: "",
+              }
+            },
+          })
+          yield* Effect.addFinalizer(() => Effect.sync(() => init.mockRestore()))
+
+          const { test, prompt, chat } = yield* boot({ title: "Pinned" })
+          yield* test.push((input) => {
+            const args = {
+              description: "inspect bug",
+              prompt: "look into the cache key path",
+              subagent_type: "general",
+            }
+            const exec = input.tools.task?.execute
+            if (!exec) throw new Error("task tool missing execute")
+
+            return stream(start(), toolInputStart("task-1", "task")).pipe(
+              Stream.concat(
+                Stream.fromEffect(
+                  Effect.promise(async () => {
+                    void exec(args, {
+                      toolCallId: "task-1",
+                      abortSignal: new AbortController().signal,
+                      messages: input.messages,
+                    })
+                    return toolCall("task-1", "task", args)
+                  }),
+                ),
+              ),
+              Stream.concat(Stream.fromEffect(Effect.never)),
+            )
+          })
+          yield* user(chat.id, "launch a subagent")
+
+          const fiber = yield* prompt.loop({ sessionID: chat.id }).pipe(Effect.forkChild)
+          const tool = yield* Effect.promise(async () => {
+            const end = Date.now() + 2_000
+            for (;;) {
+              const msgs = await MessageV2.filterCompacted(MessageV2.stream(chat.id))
+              const msg = msgs.findLast((item) => item.info.role === "assistant")
+              const part = msg?.parts.find((item): item is MessageV2.ToolPart => item.type === "tool")
+              if (part?.state.status === "running") return part
+              if (Date.now() > end) throw new Error("timed out waiting for running task tool")
+              await Bun.sleep(10)
+            }
+          })
+
+          if (tool.state.status !== "running") throw new Error("expected running task tool")
+          expect(tool.state.metadata?.sessionId).toBe(child)
+
+          yield* Fiber.interrupt(fiber)
+        }),
+      { git: true, config: cfg },
+    ),
+  30_000,
+)
+
 it.effect("loop sets status to busy then idle", () =>
   provideTmpdirInstance(
     (dir) =>

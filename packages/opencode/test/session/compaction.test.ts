@@ -149,6 +149,7 @@ function fake(
         state: { status: "pending", input: {}, raw: "" },
       }
     },
+    metadata: Effect.fn("TestSessionProcessor.metadata")(() => Effect.void),
     process: Effect.fn("TestSessionProcessor.process")(() => Effect.succeed(result)),
   } satisfies SessionProcessorModule.SessionProcessor.Handle
 }

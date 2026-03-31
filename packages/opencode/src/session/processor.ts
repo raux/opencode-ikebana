@@ -30,6 +30,10 @@ export namespace SessionProcessor {
   export interface Handle {
     readonly message: MessageV2.Assistant
     readonly partFromToolCall: (toolCallID: string) => MessageV2.ToolPart | undefined
+    readonly metadata: (
+      toolCallID: string,
+      input: { title?: string; metadata?: Record<string, any> },
+    ) => Effect.Effect<void>
     readonly abort: () => Effect.Effect<void>
     readonly process: (streamInput: LLM.StreamInput) => Effect.Effect<Result>
   }
@@ -46,6 +50,7 @@ export namespace SessionProcessor {
 
   interface ProcessorContext extends Input {
     toolcalls: Record<string, MessageV2.ToolPart>
+    toolmeta: Record<string, { title?: string; metadata?: Record<string, any> }>
     shouldBreak: boolean
     snapshot: string | undefined
     blocked: boolean
@@ -89,6 +94,7 @@ export namespace SessionProcessor {
           sessionID: input.sessionID,
           model: input.model,
           toolcalls: {},
+          toolmeta: {},
           shouldBreak: false,
           snapshot: undefined,
           blocked: false,
@@ -172,13 +178,21 @@ export namespace SessionProcessor {
                 throw new Error(`Tool call not allowed while generating summary: ${value.toolName}`)
               }
               const match = ctx.toolcalls[value.toolCallId]
+              const meta = ctx.toolmeta[value.toolCallId]
               if (!match) return
               ctx.toolcalls[value.toolCallId] = yield* session.updatePart({
                 ...match,
                 tool: value.toolName,
-                state: { status: "running", input: value.input, time: { start: Date.now() } },
+                state: {
+                  status: "running",
+                  input: value.input,
+                  title: meta?.title,
+                  metadata: meta?.metadata,
+                  time: { start: Date.now() },
+                },
                 metadata: value.providerMetadata,
               } satisfies MessageV2.ToolPart)
+              delete ctx.toolmeta[value.toolCallId]
 
               const parts = yield* Effect.promise(() => MessageV2.parts(ctx.assistantMessage.id))
               const recentParts = parts.slice(-DOOM_LOOP_THRESHOLD)
@@ -224,6 +238,7 @@ export namespace SessionProcessor {
                 },
               })
               delete ctx.toolcalls[value.toolCallId]
+              delete ctx.toolmeta[value.toolCallId]
               return
             }
 
@@ -243,6 +258,7 @@ export namespace SessionProcessor {
                 ctx.blocked = ctx.shouldBreak
               }
               delete ctx.toolcalls[value.toolCallId]
+              delete ctx.toolmeta[value.toolCallId]
               return
             }
 
@@ -494,6 +510,24 @@ export namespace SessionProcessor {
           partFromToolCall(toolCallID: string) {
             return ctx.toolcalls[toolCallID]
           },
+          metadata: Effect.fn("SessionProcessor.metadata")(function* (toolCallID, input) {
+            const match = ctx.toolcalls[toolCallID]
+            if (!match || match.state.status !== "running") {
+              ctx.toolmeta[toolCallID] = {
+                ...ctx.toolmeta[toolCallID],
+                ...input,
+              }
+              return
+            }
+            ctx.toolcalls[toolCallID] = yield* session.updatePart({
+              ...match,
+              state: {
+                ...match.state,
+                title: input.title ?? match.state.title,
+                metadata: input.metadata ?? match.state.metadata,
+              },
+            })
+          }),
           abort,
           process,
         } satisfies Handle
