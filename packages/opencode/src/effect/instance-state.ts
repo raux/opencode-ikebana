@@ -58,4 +58,7 @@ export namespace InstanceState {
 
   export const invalidate = <A, E, R>(self: InstanceState<A, E, R>) =>
     Effect.gen(function* () { return yield* ScopedCache.invalidate(self.cache, yield* directory) })
+
+  /** Run a sync function with Instance ALS restored from the InstanceRef. */
+  export const withALS = <T>(fn: () => T) => Effect.map(context, (ctx) => Instance.restore(ctx, fn))
 }

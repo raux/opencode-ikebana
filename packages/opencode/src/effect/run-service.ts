@@ -6,12 +6,17 @@ import { InstanceRef } from "./instance-state"
 export const memoMap = Layer.makeMemoMapUnsafe()
 
 function provide<A, E, R>(effect: Effect.Effect<A, E, R>): Effect.Effect<A, E, R> {
+  // Try ALS first
   try {
     const ctx = Instance.current
     return Effect.provideService(effect, InstanceRef, ctx)
-  } catch {
-    return effect
-  }
+  } catch {}
+  // Try current Effect fiber's InstanceRef (for calls from inside Effect code
+  // that escapes to static functions, like sync callbacks calling Bus.publish)
+  const fiber = (globalThis as any)["~effect/Fiber/currentFiber"]
+  const ref = fiber?.services?.mapUnsafe?.get("~opencode/InstanceRef")
+  if (ref) return Effect.provideService(effect, InstanceRef, ref)
+  return effect
 }
 
 export function makeRuntime<I, S, E>(service: ServiceMap.Service<I, S>, layer: Layer.Layer<I, E>) {

@@ -979,7 +979,7 @@ NOTE: At any point in time through this workflow you should feel free to ask the
           variant,
         }
 
-        yield* Effect.addFinalizer(() => Effect.sync(() => InstructionPrompt.clear(info.id)))
+        yield* Effect.addFinalizer(() => InstanceState.withALS(() => InstructionPrompt.clear(info.id)))
 
         type Draft<T> = T extends MessageV2.Part ? Omit<T, "id"> & { id?: string } : never
         const assign = (part: Draft<MessageV2.Part>): MessageV2.Part => ({
@@ -1542,7 +1542,7 @@ NOTE: At any point in time through this workflow you should feel free to ask the
               }),
               Effect.fnUntraced(function* (exit) {
                 if (Exit.isFailure(exit) && Cause.hasInterruptsOnly(exit.cause)) yield* handle.abort()
-                InstructionPrompt.clear(handle.message.id)
+                yield* InstanceState.withALS(() => InstructionPrompt.clear(handle.message.id))
               }),
             )
             if (outcome === "break") break

@@ -143,11 +143,10 @@ export namespace Database {
   }
 
   export function effect(fn: () => any | Promise<any>) {
-    const bound = Instance.bind(fn)
     try {
-      ctx.use().effects.push(bound)
+      ctx.use().effects.push(fn)
     } catch {
-      bound()
+      fn()
     }
   }
 
@@ -164,12 +163,11 @@ export namespace Database {
     } catch (err) {
       if (err instanceof Context.NotFound) {
         const effects: (() => void | Promise<void>)[] = []
-        const result = Client().transaction(
-          (tx: TxOrDb) => {
-            return ctx.provide({ tx, effects }, () => callback(tx))
-          },
-          { behavior: options?.behavior },
-        )
+        let txCallback = (tx: TxOrDb) => ctx.provide({ tx, effects }, () => callback(tx))
+        try {
+          txCallback = Instance.bind(txCallback)
+        } catch {}
+        const result = Client().transaction(txCallback, { behavior: options?.behavior })
         for (const effect of effects) effect()
         return result as NotPromise<T>
       }
