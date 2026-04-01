@@ -787,6 +787,7 @@ test("installs dependencies in writable OPENCODE_CONFIG_DIR", async () => {
 
     expect(await Filesystem.exists(path.join(tmp.extra, "package.json"))).toBe(true)
     expect(await Filesystem.exists(path.join(tmp.extra, ".gitignore"))).toBe(true)
+    expect(await Filesystem.readText(path.join(tmp.extra, ".gitignore"))).toContain("package-lock.json")
   } finally {
     online.mockRestore()
     install.mockRestore()
@@ -815,10 +816,14 @@ test("dedupes concurrent config dependency installs for the same dir", async () 
     blocked = resolve
   })
   const online = spyOn(Network, "online").mockReturnValue(false)
-  const install = spyOn(Npm, "install").mockImplementation(async (d: string) => {
-    if (d !== dir) return // Only count calls for our test directory
-    calls += 1
-    const mod = path.join(d, "node_modules", "@opencode-ai", "plugin")
+  const run = spyOn(BunProc, "run").mockImplementation(async (_cmd, opts) => {
+    const hit = path.normalize(opts?.cwd ?? "") === path.normalize(dir)
+    if (hit) {
+      calls += 1
+      start()
+      await gate
+    }
+    const mod = path.join(opts?.cwd ?? "", "node_modules", "@opencode-ai", "plugin")
     await fs.mkdir(mod, { recursive: true })
     await Filesystem.write(
       path.join(mod, "package.json"),
@@ -873,14 +878,17 @@ test("serializes config dependency installs across dirs", async () => {
   })
 
   const online = spyOn(Network, "online").mockReturnValue(false)
-  const install = spyOn(Npm, "install").mockImplementation(async (d: string) => {
-    if (d !== a && d !== b) return // Only count calls for test directories
-    calls += 1
-    open += 1
-    peak = Math.max(peak, open)
-    if (calls === 1) {
-      start()
-      await gate
+  const run = spyOn(BunProc, "run").mockImplementation(async (_cmd, opts) => {
+    const cwd = path.normalize(opts?.cwd ?? "")
+    const hit = cwd === path.normalize(a) || cwd === path.normalize(b)
+    if (hit) {
+      calls += 1
+      open += 1
+      peak = Math.max(peak, open)
+      if (calls === 1) {
+        start()
+        await gate
+      }
     }
     const mod = path.join(d, "node_modules", "@opencode-ai", "plugin")
     await fs.mkdir(mod, { recursive: true })
@@ -888,7 +896,14 @@ test("serializes config dependency installs across dirs", async () => {
       path.join(mod, "package.json"),
       JSON.stringify({ name: "@opencode-ai/plugin", version: "1.0.0" }),
     )
-    open -= 1
+    if (hit) {
+      open -= 1
+    }
+    return {
+      code: 0,
+      stdout: Buffer.alloc(0),
+      stderr: Buffer.alloc(0),
+    }
   })
 
   try {
@@ -1800,6 +1815,22 @@ describe("resolvePluginSpec", () => {
     expect(await Config.resolvePluginSpec("@scope/pkg", file)).toBe("@scope/pkg")
   })
 
+  test("resolves windows-style relative plugin directory specs", async () => {
+    if (process.platform !== "win32") return
+
+    await using tmp = await tmpdir({
+      init: async (dir) => {
+        const plugin = path.join(dir, "plugin")
+        await fs.mkdir(plugin, { recursive: true })
+        await Filesystem.write(path.join(plugin, "index.ts"), "export default {}")
+      },
+    })
+
+    const file = path.join(tmp.path, "opencode.json")
+    const hit = await Config.resolvePluginSpec(".\\plugin", file)
+    expect(Config.pluginSpecifier(hit)).toBe(pathToFileURL(path.join(tmp.path, "plugin", "index.ts")).href)
+  })
+
   test("resolves relative file plugin paths to file urls", async () => {
     await using tmp = await tmpdir({
       init: async (dir) => {
@@ -1812,7 +1843,7 @@ describe("resolvePluginSpec", () => {
     expect(Config.pluginSpecifier(hit)).toBe(pathToFileURL(path.join(tmp.path, "plugin.ts")).href)
   })
 
-  test("resolves plugin directory paths to package main files", async () => {
+  test("resolves plugin directory paths to directory urls", async () => {
     await using tmp = await tmpdir({
       init: async (dir) => {
         const plugin = path.join(dir, "plugin")
@@ -1822,6 +1853,20 @@ describe("resolvePluginSpec", () => {
           type: "module",
           main: "./index.ts",
         })
+        await Filesystem.write(path.join(plugin, "index.ts"), "export default {}")
+      },
+    })
+
+    const file = path.join(tmp.path, "opencode.json")
+    const hit = await Config.resolvePluginSpec("./plugin", file)
+    expect(Config.pluginSpecifier(hit)).toBe(pathToFileURL(path.join(tmp.path, "plugin")).href)
+  })
+
+  test("resolves plugin directories without package.json to index.ts", async () => {
+    await using tmp = await tmpdir({
+      init: async (dir) => {
+        const plugin = path.join(dir, "plugin")
+        await fs.mkdir(plugin, { recursive: true })
         await Filesystem.write(path.join(plugin, "index.ts"), "export default {}")
       },
     })
