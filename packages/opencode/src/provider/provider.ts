@@ -1364,7 +1364,7 @@ export namespace Provider {
 
           let installedPath: string
           if (!model.api.npm.startsWith("file://")) {
-            installedPath = await BunProc.install(model.api.npm, "latest")
+            installedPath = await Npm.add(model.api.npm)
           } else {
             log.info("loading local provider", { pkg: model.api.npm })
             installedPath = model.api.npm

@@ -266,8 +266,8 @@ describe("plugin.loader.shared", () => {
     try {
       await load(tmp.path)
 
-      expect(install.mock.calls).toContainEqual(["acme-plugin", "latest", { ignoreScripts: true }])
-      expect(install.mock.calls).toContainEqual(["scope-plugin", "2.3.4", { ignoreScripts: true }])
+      expect(add.mock.calls).toContainEqual(["acme-plugin@latest"])
+      expect(add.mock.calls).toContainEqual(["scope-plugin@2.3.4"])
     } finally {
       add.mockRestore()
     }
@@ -378,7 +378,7 @@ describe("plugin.loader.shared", () => {
       },
     })
 
-    const install = spyOn(BunProc, "install").mockResolvedValue(tmp.extra.mod)
+    const install = spyOn(Npm, "add").mockResolvedValue(tmp.extra.mod)
 
     try {
       const errors = await errs(tmp.path)
@@ -431,7 +431,7 @@ describe("plugin.loader.shared", () => {
       },
     })
 
-    const install = spyOn(BunProc, "install").mockResolvedValue(tmp.extra.mod)
+    const install = spyOn(Npm, "add").mockResolvedValue(tmp.extra.mod)
 
     try {
       const errors = await errs(tmp.path)
@@ -477,7 +477,7 @@ describe("plugin.loader.shared", () => {
       },
     })
 
-    const install = spyOn(BunProc, "install").mockResolvedValue(tmp.extra.mod)
+    const install = spyOn(Npm, "add").mockResolvedValue(tmp.extra.mod)
 
     try {
       const errors = await errs(tmp.path)
