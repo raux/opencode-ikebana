@@ -150,15 +150,11 @@ export namespace SessionSummary {
     }),
   )
 
-  export const defaultLayer = Layer.unwrap(
-    Effect.sync(() =>
-      layer.pipe(
-        Layer.provide(Session.defaultLayer),
-        Layer.provide(Snapshot.defaultLayer),
-        Layer.provide(Storage.defaultLayer),
-        Layer.provide(Bus.layer),
-      ),
-    ),
+  export const defaultLayer = layer.pipe(
+    Layer.provide(Session.defaultLayer),
+    Layer.provide(Snapshot.defaultLayer),
+    Layer.provide(Storage.defaultLayer),
+    Layer.provide(Bus.layer),
   )
 
   const { runPromise } = makeRuntime(Service, defaultLayer)
