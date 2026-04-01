@@ -1,14 +1,3 @@
-// Workaround: Bun on Windows does not support the UV_FS_O_FILEMAP flag that
-// the `tar` package uses for files < 512KB (fs.open returns EINVAL).
-// tar silently swallows the error and skips writing files, leaving only empty
-// directories. Setting __FAKE_PLATFORM__ makes tar fall back to the plain 'w'
-// flag. See tar's get-write-flag.js.
-// Must be set before @npmcli/arborist is imported since tar caches the flag
-// at module evaluation time — so we use a dynamic import() below.
-if (process.platform === "win32") {
-  process.env.__FAKE_PLATFORM__ = "linux"
-}
-
 import semver from "semver"
 import z from "zod"
 import { NamedError } from "@opencode-ai/util/error"
