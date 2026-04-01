@@ -73,13 +73,12 @@ export namespace Format {
             log.info("all formatters are disabled")
           }
 
-          async function isEnabled(item: Formatter.Info) {
-            let status = enabled[item.name]
-            if (status === undefined) {
-              status = await item.enabled()
-              enabled[item.name] = status
-            }
-            return status
+          if (info.command.length === 0) continue
+
+          formatters[name] = {
+            ...info,
+            name,
+            enabled: async (): Promise<string[] | false> => info.command,
           }
 
           async function getFormatter(ext: string) {

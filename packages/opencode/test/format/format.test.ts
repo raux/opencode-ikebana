@@ -66,12 +66,29 @@ describe("Format", () => {
 
   it.live("service initializes without error", () => provideTmpdirInstance(() => Format.Service.use(() => Effect.void)))
 
-  it.live("status() initializes formatter state per directory", () =>
-    Effect.gen(function* () {
-      const a = yield* provideTmpdirInstance(() => Format.Service.use((fmt) => fmt.status()), {
-        config: { formatter: false },
-      })
-      const b = yield* provideTmpdirInstance(() => Format.Service.use((fmt) => fmt.status()))
+  test("status() includes custom formatters with command from config", async () => {
+    await using tmp = await tmpdir({
+      config: {
+        formatter: {
+          customtool: {
+            command: ["echo", "formatted", "$FILE"],
+            extensions: [".custom"],
+          },
+        },
+      },
+    })
+
+    await withServices(tmp.path, Format.layer, async (rt) => {
+      const statuses = await rt.runPromise(Format.Service.use((s) => s.status()))
+      const custom = statuses.find((s) => s.name === "customtool")
+      expect(custom).toBeDefined()
+      expect(custom!.extensions).toContain(".custom")
+      expect(custom!.enabled).toBe(true)
+    })
+  })
+
+  test("service initializes without error", async () => {
+    await using tmp = await tmpdir()
 
       expect(a).toEqual([])
       expect(b.length).toBeGreaterThan(0)
