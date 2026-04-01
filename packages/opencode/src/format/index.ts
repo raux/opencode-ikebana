@@ -41,7 +41,7 @@ export namespace Format {
 
       const state = yield* InstanceState.make(
         Effect.fn("Format.state")(function* (_ctx) {
-          const enabled: Record<string, string[] | false> = {}
+          const enabled: Record<string, boolean> = {}
           const formatters: Record<string, Formatter.Info> = {}
 
           const cfg = yield* config.get()
@@ -66,19 +66,20 @@ export namespace Format {
               formatters[name] = {
                 ...info,
                 name,
-                enabled: async () => info.command,
+                enabled: async () => true,
               }
             }
           } else {
             log.info("all formatters are disabled")
           }
 
-          if (info.command.length === 0) continue
-
-          formatters[name] = {
-            ...info,
-            name,
-            enabled: async (): Promise<string[] | false> => info.command,
+          async function isEnabled(item: Formatter.Info) {
+            let status = enabled[item.name]
+            if (status === undefined) {
+              status = await item.enabled()
+              enabled[item.name] = status
+            }
+            return status
           }
 
           async function getFormatter(ext: string) {
@@ -86,27 +87,17 @@ export namespace Format {
             const checks = await Promise.all(
               matching.map(async (item) => {
                 log.info("checking", { name: item.name, ext })
-                const cmd = await isEnabled(item)
-                if (cmd) {
+                const on = await isEnabled(item)
+                if (on) {
                   log.info("enabled", { name: item.name, ext })
                 }
-                return { item, cmd }
+                return {
+                  item,
+                  enabled: on,
+                }
               }),
             )
-            const result: Array<{
-              name: string
-              command: string[]
-              environment?: Record<string, string>
-            }> = []
-            for (const { item, cmd } of checks) {
-              if (cmd !== false)
-                result.push({
-                  name: item.name,
-                  command: cmd,
-                  environment: item.environment,
-                })
-            }
-            return result
+            return checks.filter((x) => x.enabled).map((x) => x.item)
           }
 
           function formatFile(filepath: string) {
@@ -173,7 +164,7 @@ export namespace Format {
           result.push({
             name: formatter.name,
             extensions: formatter.extensions,
-            enabled: !!isOn,
+            enabled: isOn,
           })
         }
         return result
