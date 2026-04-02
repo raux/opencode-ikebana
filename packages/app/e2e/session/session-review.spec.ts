@@ -1,6 +1,6 @@
 import { waitSessionIdle, withSession } from "../actions"
 import { test, expect } from "../fixtures"
-import { promptMatch } from "../prompt/mock"
+import { bodyText } from "../prompt/mock"
 
 const count = 14
 
@@ -47,8 +47,12 @@ async function patchWithMock(
   patchText: string,
 ) {
   const callsBefore = await llm.calls()
-  await llm.toolMatch(promptMatch("Apply the provided patch exactly once."), "apply_patch", { patchText })
-  await sdk.session.promptAsync({
+  await llm.toolMatch(
+    (hit) => bodyText(hit).includes("Your only valid response is one apply_patch tool call."),
+    "apply_patch",
+    { patchText },
+  )
+  await sdk.session.prompt({
     sessionID,
     agent: "build",
     system: [
@@ -61,12 +65,12 @@ async function patchWithMock(
     parts: [{ type: "text", text: "Apply the provided patch exactly once." }],
   })
 
-  // Wait for the agent loop to actually start before checking idle.
-  // promptAsync is fire-and-forget — without this, waitSessionIdle can
-  // return immediately because the session status is still undefined.
   await expect.poll(() => llm.calls().then((c) => c > callsBefore), { timeout: 30_000 }).toBe(true)
-
-  await waitSessionIdle(sdk, sessionID, 120_000)
+  await expect
+    .poll(async () => (await sdk.session.get({ sessionID }).then((res) => res.data?.summary?.files)) ?? 0, {
+      timeout: 120_000,
+    })
+    .toBeGreaterThan(0)
 }
 
 async function show(page: Parameters<typeof test>[0]["page"]) {

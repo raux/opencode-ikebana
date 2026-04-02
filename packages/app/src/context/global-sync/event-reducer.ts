@@ -14,6 +14,7 @@ import type {
 import type { State, VcsCache } from "./types"
 import { trimSessions } from "./session-trim"
 import { dropSessionCaches } from "./session-cache"
+import { sanitizeProject } from "./utils"
 
 const SKIP_PARTS = new Set(["patch", "step-start", "step-finish"])
 
@@ -33,12 +34,12 @@ export function applyGlobalEvent(input: {
   const result = Binary.search(input.project, properties.id, (s) => s.id)
   if (result.found) {
     input.setGlobalProject((draft) => {
-      draft[result.index] = { ...draft[result.index], ...properties }
+      draft[result.index] = sanitizeProject({ ...draft[result.index], ...properties })
     })
     return
   }
   input.setGlobalProject((draft) => {
-    draft.splice(result.index, 0, properties)
+    draft.splice(result.index, 0, sanitizeProject(properties))
   })
 }
 

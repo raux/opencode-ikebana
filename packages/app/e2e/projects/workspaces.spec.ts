@@ -315,7 +315,20 @@ test("can delete a workspace", async ({ page, project }) => {
   await page.setViewportSize({ width: 1400, height: 800 })
   await project.open()
 
-  const { rootSlug, slug, directory } = await setupWorkspaceTest(page, project)
+  const rootSlug = project.slug
+  await openSidebar(page)
+  await setWorkspacesEnabled(page, rootSlug, true)
+
+  const created = await project.sdk.worktree.create({ directory: project.directory }).then((res) => res.data)
+  if (!created?.directory) throw new Error("Failed to create workspace for delete test")
+
+  const directory = created.directory
+  const slug = dirSlug(directory)
+  project.trackDirectory(directory)
+
+  await page.reload()
+  await openSidebar(page)
+  await expect(page.locator(workspaceItemSelector(slug)).first()).toBeVisible({ timeout: 60_000 })
 
   await expect
     .poll(

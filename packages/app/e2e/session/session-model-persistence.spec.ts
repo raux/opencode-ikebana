@@ -222,7 +222,7 @@ async function goto(page: Page, directory: string, sessionID?: string) {
 }
 
 async function submit(project: Parameters<typeof test>[0]["project"], value: string) {
-  return project.user(value)
+  return project.prompt(value)
 }
 
 async function createWorkspace(page: Page, root: string, seen: string[]) {

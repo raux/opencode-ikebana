@@ -295,7 +295,12 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
 
     const gotoSession = async (sessionID?: string) => {
       await visit(page, sessionPath(directory, sessionID))
-      await waitSession(page, { directory, sessionID, serverUrl: backend.url })
+      await waitSession(page, {
+        directory,
+        sessionID,
+        serverUrl: backend.url,
+        allowAnySession: !sessionID,
+      })
     }
     await use(gotoSession)
   },
@@ -365,7 +370,12 @@ function makeProject(
   const gotoSession = async (sessionID?: string) => {
     const cur = need()
     await visit(page, sessionPath(cur.directory, sessionID))
-    await waitSession(page, { directory: cur.directory, sessionID, serverUrl: backend.url })
+    await waitSession(page, {
+      directory: cur.directory,
+      sessionID,
+      serverUrl: backend.url,
+      allowAnySession: !sessionID,
+    })
     const current = sessionIDFromUrl(page.url())
     if (current) trackSession(current)
   }
@@ -394,6 +404,46 @@ function makeProject(
   }
 
   const send = async (text: string, input: { noReply: boolean; shell: boolean }) => {
+    if (input.noReply) {
+      const cur = need()
+      const state = await page.evaluate(() => {
+        const model = (window as E2EWindow).__opencode_e2e?.model?.current
+        if (!model) return null
+        return {
+          dir: model.dir,
+          sessionID: model.sessionID,
+          agent: model.agent,
+          model: model.model ? { providerID: model.model.providerID, modelID: model.model.modelID } : undefined,
+          variant: model.variant ?? undefined,
+        }
+      })
+      const dir = state?.dir ?? cur.directory
+      const sdk = backend.sdk(dir)
+      const sessionID = state?.sessionID
+        ? state.sessionID
+        : await sdk.session.create({ directory: dir, title: "E2E Session" }).then((res) => {
+            if (!res.data?.id) throw new Error("Failed to create no-reply session")
+            return res.data.id
+          })
+      await sdk.session.prompt({
+        sessionID,
+        agent: state?.agent,
+        model: state?.model,
+        variant: state?.variant,
+        noReply: true,
+        parts: [{ type: "text", text }],
+      })
+      await visit(page, sessionPath(dir, sessionID))
+      const active = await waitSession(page, {
+        directory: dir,
+        sessionID,
+        serverUrl: backend.url,
+      })
+      trackSession(sessionID, active.directory)
+      await waitSessionSaved(active.directory, sessionID, 90_000, backend.url)
+      return sessionID
+    }
+
     const prev = await promptSend(page)
     if (!input.noReply && !input.shell && (await llm.pending()) === 0) {
       await llm.text("ok")
@@ -430,11 +480,7 @@ function makeProject(
       await expect.poll(async () => (await promptSend(page)).started, { timeout: 5_000 }).toBeGreaterThan(prev.started)
     }
 
-    if (input.noReply) {
-      await withNoReplyPrompt(page, submit)
-    } else {
-      await submit()
-    }
+    await submit()
 
     let next: { sessionID: string; directory: string } | undefined
     await expect
@@ -537,7 +583,12 @@ async function runProject<T>(
 
   const gotoSession = async (sessionID?: string) => {
     await visit(page, sessionPath(root, sessionID))
-    await waitSession(page, { directory: root, sessionID, serverUrl: url })
+    await waitSession(page, {
+      directory: root,
+      sessionID,
+      serverUrl: url,
+      allowAnySession: !sessionID,
+    })
     const current = sessionIDFromUrl(page.url())
     if (current) trackSession(current)
   }

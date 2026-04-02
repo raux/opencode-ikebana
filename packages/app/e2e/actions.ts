@@ -44,7 +44,7 @@ export async function defocus(page: Page) {
 }
 
 export async function withNoReplyPrompt<T>(page: Page, fn: () => Promise<T>) {
-  const url = "**/session/*/prompt_async"
+  const urls = ["**/session/*/prompt_async", "**/session/*/message"]
   const route = async (input: Route) => {
     const body = input.request().postDataJSON()
     await input.continue({
@@ -56,11 +56,11 @@ export async function withNoReplyPrompt<T>(page: Page, fn: () => Promise<T>) {
     })
   }
 
-  await page.route(url, route)
+  await Promise.all(urls.map((url) => page.route(url, route)))
   try {
     return await fn()
   } finally {
-    await page.unroute(url, route)
+    await Promise.all(urls.map((url) => page.unroute(url, route)))
   }
 }
 
@@ -479,7 +479,15 @@ export async function waitDir(page: Page, directory: string, input?: { serverUrl
   return { directory: target, slug: base64Encode(target) }
 }
 
-export async function waitSession(page: Page, input: { directory: string; sessionID?: string; serverUrl?: string }) {
+export async function waitSession(
+  page: Page,
+  input: {
+    directory: string
+    sessionID?: string
+    serverUrl?: string
+    allowAnySession?: boolean
+  },
+) {
   const target = await resolveDirectory(input.directory, input.serverUrl)
   await expect
     .poll(
@@ -491,9 +499,11 @@ export async function waitSession(page: Page, input: { directory: string; sessio
         if (!resolved || resolved.directory !== target) return false
         const current = sessionIDFromUrl(page.url())
         if (input.sessionID && current !== input.sessionID) return false
+        if (!input.sessionID && !input.allowAnySession && current) return false
 
         const state = await probeSession(page)
         if (input.sessionID && (!state || state.sessionID !== input.sessionID)) return false
+        if (!input.sessionID && !input.allowAnySession && state?.sessionID) return false
         if (state?.dir) {
           const dir = await resolveDirectory(state.dir, input.serverUrl).catch(() => state.dir ?? "")
           if (dir !== target) return false
@@ -1020,7 +1030,7 @@ export async function setWorkspacesEnabled(page: Page, projectSlug: string, enab
   if ((await current()) === enabled) return
 
   if (enabled) {
-    await page.goto(page.url())
+    await page.reload()
     await openSidebar(page)
     if ((await current()) === enabled) return
   }
@@ -1053,7 +1063,7 @@ export async function setWorkspacesEnabled(page: Page, projectSlug: string, enab
   }
 
   if ((await current()) !== enabled) {
-    await page.goto(page.url())
+    await page.reload()
     await openSidebar(page)
   }
 
