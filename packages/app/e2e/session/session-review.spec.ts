@@ -2,6 +2,8 @@ import { waitSessionIdle, withSession } from "../actions"
 import { test, expect } from "../fixtures"
 import { bodyText } from "../prompt/mock"
 
+const patchModel = { providerID: "openai", modelID: "gpt-5.4" } as const
+
 const count = 14
 
 function body(mark: string) {
@@ -55,6 +57,7 @@ async function patchWithMock(
   await sdk.session.prompt({
     sessionID,
     agent: "build",
+    model: patchModel,
     system: [
       "You are seeding deterministic e2e UI state.",
       "Your only valid response is one apply_patch tool call.",

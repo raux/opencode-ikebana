@@ -254,6 +254,16 @@ function responseToolArgs(id: string, text: string, seq: number) {
   }
 }
 
+function responseToolArgsDone(id: string, args: string, seq: number) {
+  return {
+    type: "response.function_call_arguments.done",
+    sequence_number: seq,
+    output_index: 0,
+    item_id: id,
+    arguments: args,
+  }
+}
+
 function responseToolDone(tool: { id: string; item: string; name: string; args: string }, seq: number) {
   return {
     type: "response.output_item.done",
@@ -390,6 +400,8 @@ function responses(item: Sse, model: string) {
     lines.push(responseReasonDone(reason, seq))
   }
   if (call && !item.hang && !item.error) {
+    seq += 1
+    lines.push(responseToolArgsDone(call.item, call.args, seq))
     seq += 1
     lines.push(responseToolDone(call, seq))
   }
