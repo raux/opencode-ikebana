@@ -10,16 +10,14 @@ import {
   cleanupTestProject,
   createTestProject,
   setHealthPhase,
-  seedProjects,
   sessionIDFromUrl,
   waitSession,
   waitSessionIdle,
   waitSessionSaved,
   waitSlug,
-  withNoReplyPrompt,
 } from "./actions"
 import { promptSelector } from "./selectors"
-import { createSdk, dirSlug, getWorktree, sessionPath } from "./utils"
+import { createSdk, dirSlug, getWorktree, serverUrl, sessionPath } from "./utils"
 
 type LLMFixture = {
   url: string
