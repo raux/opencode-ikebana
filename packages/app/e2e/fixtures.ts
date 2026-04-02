@@ -16,10 +16,11 @@ import {
   waitSessionIdle,
   waitSessionSaved,
   waitSlug,
+  withNoReplyPrompt,
 } from "./actions"
 import { openaiModel, withMockOpenAI } from "./prompt/mock"
 import { promptSelector } from "./selectors"
-import { createSdk, dirSlug, getWorktree, resolveDirectory, sessionPath } from "./utils"
+import { createSdk, dirSlug, getWorktree, sessionPath } from "./utils"
 
 type LLMFixture = {
   url: string
@@ -87,6 +88,21 @@ function clean(value: string | null) {
   return (value ?? "").replace(/\u200B/g, "").trim()
 }
 
+async function promptSend(page: Page) {
+  return page
+    .evaluate(() => {
+      const win = window as E2EWindow
+      const sent = win.__opencode_e2e?.prompt?.sent
+      return {
+        started: sent?.started ?? 0,
+        count: sent?.count ?? 0,
+        sessionID: sent?.sessionID,
+        directory: sent?.directory,
+      }
+    })
+    .catch(() => ({ started: 0, count: 0, sessionID: undefined, directory: undefined }))
+}
+
 type ProjectHandle = {
   directory: string
   slug: string
@@ -106,6 +122,8 @@ type ProjectOptions = {
 type ProjectFixture = ProjectHandle & {
   open: (options?: ProjectOptions) => Promise<void>
   prompt: (text: string) => Promise<string>
+  user: (text: string) => Promise<string>
+  shell: (cmd: string) => Promise<string>
 }
 
 type TestFixtures = {
@@ -345,7 +363,7 @@ function makeProject(
     await seedStorage(page, {
       directory,
       extra: options?.extra,
-      model: options?.model ?? openaiModel,
+      model: options?.model,
       serverUrl: backend.url,
     })
     state = {
@@ -360,49 +378,87 @@ function makeProject(
     need().slug = await waitSlug(page)
   }
 
-  const prompt = async (text: string) => {
-    const cur = need()
-    if ((await llm.pending()) === 0) {
+  const send = async (text: string, input: { noReply: boolean; shell: boolean }) => {
+    const prev = await promptSend(page)
+    if (!input.noReply && !input.shell && (await llm.pending()) === 0) {
       await llm.text("ok")
     }
 
     const prompt = page.locator(promptSelector).first()
-    await expect(prompt).toBeVisible()
-    await prompt.click()
-    await page.keyboard.type(text)
-    await expect.poll(async () => clean(await prompt.textContent())).toBe(text)
-    await page.keyboard.press("Enter")
-    const sent = await expect
-      .poll(() => sessionIDFromUrl(page.url()) ?? "", { timeout: 5_000 })
-      .not.toBe("")
-      .then(() => true)
-      .catch(() => false)
-    if (!sent) {
+    const submit = async () => {
+      await expect(prompt).toBeVisible()
+      await prompt.click()
+      if (input.shell) {
+        await page.keyboard.type("!")
+        await expect(prompt).toHaveAttribute("aria-label", /enter shell command/i)
+      }
+      await page.keyboard.type(text)
+      await expect.poll(async () => clean(await prompt.textContent())).toBe(text)
+      await page.keyboard.press("Enter")
+      const started = await expect
+        .poll(async () => (await promptSend(page)).started, { timeout: 5_000 })
+        .toBeGreaterThan(prev.started)
+        .then(() => true)
+        .catch(() => false)
+      if (started) return
       const send = page.getByRole("button", { name: "Send" }).first()
-      await expect(send).toBeEnabled()
-      await send.click()
+      const enabled = await send
+        .isEnabled()
+        .then((x) => x)
+        .catch(() => false)
+      if (enabled) {
+        await send.click()
+      } else {
+        await prompt.click()
+        await page.keyboard.press("Enter")
+      }
+      await expect.poll(async () => (await promptSend(page)).started, { timeout: 5_000 }).toBeGreaterThan(prev.started)
     }
 
-    await expect(page).toHaveURL(/\/session\/[^/?#]+/, { timeout: 90_000 })
-    const sessionID = sessionIDFromUrl(page.url())
-    if (!sessionID) throw new Error(`Failed to parse session id from url: ${page.url()}`)
+    if (input.noReply) {
+      await withNoReplyPrompt(page, submit)
+    } else {
+      await submit()
+    }
 
-    const current = await page
-      .evaluate(() => {
-        const win = window as E2EWindow
-        const next = win.__opencode_e2e?.model?.current
-        if (!next) return null
-        return { dir: next.dir, sessionID: next.sessionID }
-      })
-      .catch(() => null as { dir?: string; sessionID?: string } | null)
-    const directory = current?.dir
-      ? await resolveDirectory(current.dir, backend.url).catch(() => cur.directory)
-      : cur.directory
+    let next: { sessionID: string; directory: string } | undefined
+    await expect
+      .poll(
+        async () => {
+          const sent = await promptSend(page)
+          if (sent.count <= prev.count) return ""
+          if (!sent.sessionID || !sent.directory) return ""
+          next = { sessionID: sent.sessionID, directory: sent.directory }
+          return sent.sessionID
+        },
+        { timeout: 90_000 },
+      )
+      .not.toBe("")
 
-    trackSession(sessionID, directory)
-    await waitSessionSaved(directory, sessionID, 90_000, backend.url)
-    await waitSessionIdle(backend.sdk(directory), sessionID, 90_000).catch(() => undefined)
-    return sessionID
+    if (!next) throw new Error("Failed to observe prompt submission in e2e prompt probe")
+    const active = await waitSession(page, {
+      directory: next.directory,
+      sessionID: next.sessionID,
+      serverUrl: backend.url,
+    })
+    trackSession(next.sessionID, active.directory)
+    if (!input.shell) {
+      await waitSessionSaved(active.directory, next.sessionID, 90_000, backend.url)
+    }
+    await waitSessionIdle(backend.sdk(active.directory), next.sessionID, 90_000).catch(() => undefined)
+    return next.sessionID
+  }
+
+  const prompt = async (text: string) => {
+    return send(text, { noReply: false, shell: false })
+  }
+
+  const user = async (text: string) => {
+    return send(text, { noReply: true, shell: false })
+  }
+
+  const shell = async (cmd: string) => {
+    return send(cmd, { noReply: false, shell: true })
   }
 
   const cleanup = async () => {
@@ -424,6 +480,8 @@ function makeProject(
     project: {
       open,
       prompt,
+      user,
+      shell,
       gotoSession,
       trackSession,
       trackDirectory,

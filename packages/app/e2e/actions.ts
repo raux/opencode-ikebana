@@ -602,12 +602,15 @@ export async function confirmDialog(page: Page, buttonName: string | RegExp) {
 }
 
 export async function openSharePopover(page: Page) {
-  const rightSection = page.locator(titlebarRightSelector)
-  const shareButton = rightSection.getByRole("button", { name: "Share" }).first()
-  await expect(shareButton).toBeVisible()
+  const scroller = page.locator(".scroll-view__viewport").first()
+  await expect(scroller).toBeVisible()
+  await expect(scroller.getByRole("heading", { level: 1 }).first()).toBeVisible({ timeout: 30_000 })
+
+  const menuTrigger = scroller.getByRole("button", { name: /more options/i }).first()
+  await expect(menuTrigger).toBeVisible({ timeout: 30_000 })
 
   const popoverBody = page
-    .locator(popoverBodySelector)
+    .locator('[data-component="popover-content"]')
     .filter({ has: page.getByRole("button", { name: /^(Publish|Unpublish)$/ }) })
     .first()
 
@@ -617,10 +620,13 @@ export async function openSharePopover(page: Page) {
     .catch(() => false)
 
   if (!opened) {
-    await shareButton.click()
-    await expect(popoverBody).toBeVisible()
+    const menu = page.locator(dropdownMenuContentSelector).first()
+    await menuTrigger.click()
+    await clickMenuItem(menu, /share/i)
+    await expect(menu).toHaveCount(0)
+    await expect(popoverBody).toBeVisible({ timeout: 30_000 })
   }
-  return { rightSection, popoverBody }
+  return { rightSection: scroller, popoverBody }
 }
 
 export async function clickPopoverButton(page: Page, buttonName: string | RegExp) {
@@ -1005,30 +1011,57 @@ export async function openProjectMenu(page: Page, projectSlug: string) {
 }
 
 export async function setWorkspacesEnabled(page: Page, projectSlug: string, enabled: boolean) {
-  const current = await page
-    .getByRole("button", { name: "New workspace" })
-    .first()
-    .isVisible()
-    .then((x) => x)
-    .catch(() => false)
+  const current = () =>
+    page
+      .getByRole("button", { name: "New workspace" })
+      .first()
+      .isVisible()
+      .then((x) => x)
+      .catch(() => false)
 
-  if (current === enabled) return
+  if ((await current()) === enabled) return
+
+  if (enabled) {
+    await page.goto(page.url())
+    await openSidebar(page)
+    if ((await current()) === enabled) return
+  }
 
   const flip = async (timeout?: number) => {
     const menu = await openProjectMenu(page, projectSlug)
     const toggle = menu.locator(projectWorkspacesToggleSelector(projectSlug)).first()
     await expect(toggle).toBeVisible()
-    return toggle.click({ force: true, timeout })
+    await expect(toggle).toBeEnabled({ timeout: 30_000 })
+    const clicked = await toggle
+      .click({ force: true, timeout })
+      .then(() => true)
+      .catch(() => false)
+    if (clicked) return
+    await toggle.focus()
+    await page.keyboard.press("Enter")
   }
 
-  const flipped = await flip(1500)
-    .then(() => true)
-    .catch(() => false)
+  for (const timeout of [1500, undefined, undefined]) {
+    if ((await current()) === enabled) break
+    await flip(timeout)
+      .then(() => undefined)
+      .catch(() => undefined)
+    const matched = await expect
+      .poll(current, { timeout: 5_000 })
+      .toBe(enabled)
+      .then(() => true)
+      .catch(() => false)
+    if (matched) break
+  }
 
-  if (!flipped) await flip()
+  if ((await current()) !== enabled) {
+    await page.goto(page.url())
+    await openSidebar(page)
+  }
 
   const expected = enabled ? "New workspace" : "New session"
-  await expect(page.getByRole("button", { name: expected }).first()).toBeVisible()
+  await expect.poll(current, { timeout: 60_000 }).toBe(enabled)
+  await expect(page.getByRole("button", { name: expected }).first()).toBeVisible({ timeout: 30_000 })
 }
 
 export async function openWorkspaceMenu(page: Page, workspaceSlug: string) {
