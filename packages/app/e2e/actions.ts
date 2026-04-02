@@ -637,12 +637,6 @@ export async function openSharePopover(page: Page) {
   return { rightSection: scroller, popoverBody }
 }
 
-export async function clickPopoverButton(page: Page, buttonName: string | RegExp) {
-  const button = page.getByRole("button").filter({ hasText: buttonName }).first()
-  await expect(button).toBeVisible()
-  await button.click()
-}
-
 export async function clickListItem(
   container: Locator | Page,
   filter: string | RegExp | { key?: string; text?: string | RegExp; keyStartsWith?: string },
@@ -808,40 +802,6 @@ export async function seedSessionQuestion(
   return { id: result.id }
 }
 
-export async function seedSessionPermission(
-  sdk: ReturnType<typeof createSdk>,
-  input: {
-    sessionID: string
-    permission: string
-    patterns: string[]
-    description?: string
-  },
-) {
-  const text = [
-    "Your only valid response is one bash tool call.",
-    `Use this JSON input: ${JSON.stringify({
-      command: input.patterns[0] ? `ls ${JSON.stringify(input.patterns[0])}` : "pwd",
-      workdir: "/",
-      description: input.description ?? `seed ${input.permission} permission request`,
-    })}`,
-    "Do not output plain text.",
-  ].join("\n")
-
-  const result = await seed({
-    sdk,
-    sessionID: input.sessionID,
-    prompt: text,
-    timeout: 30_000,
-    probe: async () => {
-      const list = await sdk.permission.list().then((x) => x.data ?? [])
-      return list.find((item) => item.sessionID === input.sessionID)
-    },
-  })
-
-  if (!result) throw new Error("Timed out seeding permission request")
-  return { id: result.id }
-}
-
 export async function seedSessionTask(
   sdk: ReturnType<typeof createSdk>,
   input: {
@@ -898,36 +858,6 @@ export async function seedSessionTask(
 
   if (!result) throw new Error("Timed out seeding task tool")
   return result
-}
-
-export async function seedSessionTodos(
-  sdk: ReturnType<typeof createSdk>,
-  input: {
-    sessionID: string
-    todos: Array<{ content: string; status: string; priority: string }>
-  },
-) {
-  const text = [
-    "Your only valid response is one todowrite tool call.",
-    `Use this JSON input: ${JSON.stringify({ todos: input.todos })}`,
-    "Do not output plain text.",
-  ].join("\n")
-  const target = JSON.stringify(input.todos)
-
-  const result = await seed({
-    sdk,
-    sessionID: input.sessionID,
-    prompt: text,
-    timeout: 30_000,
-    probe: async () => {
-      const todos = await sdk.session.todo({ sessionID: input.sessionID }).then((x) => x.data ?? [])
-      if (JSON.stringify(todos) !== target) return
-      return true
-    },
-  })
-
-  if (!result) throw new Error("Timed out seeding todos")
-  return true
 }
 
 export async function clearSessionDockSeed(sdk: ReturnType<typeof createSdk>, sessionID: string) {

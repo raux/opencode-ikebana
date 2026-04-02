@@ -18,7 +18,6 @@ import {
   waitSlug,
   withNoReplyPrompt,
 } from "./actions"
-import { openaiModel, withMockOpenAI } from "./prompt/mock"
 import { promptSelector } from "./selectors"
 import { createSdk, dirSlug, getWorktree, sessionPath } from "./utils"
 
@@ -57,19 +56,6 @@ type LLMFixture = {
 
 type LLMWorker = LLMFixture & {
   reset: () => Promise<void>
-}
-
-type AssistantFixture = {
-  reply: (value: string, opts?: { usage?: Usage }) => Promise<void>
-  tool: (name: string, input: unknown) => Promise<void>
-  toolHang: (name: string, input: unknown) => Promise<void>
-  reason: (value: string, opts?: { text?: string; usage?: Usage }) => Promise<void>
-  fail: (message?: unknown) => Promise<void>
-  error: (status: number, body: unknown) => Promise<void>
-  hang: () => Promise<void>
-  hold: (value: string, wait: PromiseLike<unknown>) => Promise<void>
-  calls: () => Promise<number>
-  pending: () => Promise<number>
 }
 
 export const settingsKey = "settings.v3"
@@ -143,13 +129,9 @@ type ProjectFixture = ProjectHandle & {
 
 type TestFixtures = {
   llm: LLMFixture
-  assistant: AssistantFixture
   project: ProjectFixture
   sdk: ReturnType<typeof createSdk>
   gotoSession: (sessionID?: string) => Promise<void>
-  withProject: <T>(callback: (project: ProjectHandle) => Promise<T>, options?: ProjectOptions) => Promise<T>
-  withBackendProject: <T>(callback: (project: ProjectHandle) => Promise<T>, options?: ProjectOptions) => Promise<T>
-  withMockProject: <T>(callback: (project: ProjectHandle) => Promise<T>, options?: ProjectOptions) => Promise<T>
 }
 
 type WorkerFixtures = {
@@ -238,20 +220,6 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
       throw new Error(`TestLLMServer still has ${pending} queued response(s) after the test finished`)
     }
   },
-  assistant: async ({ llm }, use) => {
-    await use({
-      reply: llm.text,
-      tool: llm.tool,
-      toolHang: llm.toolHang,
-      reason: llm.reason,
-      fail: llm.fail,
-      error: llm.error,
-      hang: llm.hang,
-      hold: llm.hold,
-      calls: llm.calls,
-      pending: llm.pending,
-    })
-  },
   page: async ({ page }, use) => {
     let boundary: string | undefined
     setHealthPhase(page, "test")
@@ -311,29 +279,6 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
     } finally {
       await item.cleanup()
     }
-  },
-  withProject: async ({ page }, use) => {
-    await use((callback, options) => runProject(page, callback, options))
-  },
-  withBackendProject: async ({ page, backend }, use) => {
-    await use((callback, options) =>
-      runProject(page, callback, { ...options, serverUrl: backend.url, sdk: backend.sdk }),
-    )
-  },
-  withMockProject: async ({ page, llm, backend }, use) => {
-    await use((callback, options) =>
-      withMockOpenAI({
-        serverUrl: backend.url,
-        llmUrl: llm.url,
-        fn: () =>
-          runProject(page, callback, {
-            ...options,
-            model: options?.model ?? openaiModel,
-            serverUrl: backend.url,
-            sdk: backend.sdk,
-          }),
-      }),
-    )
   },
 })
 
@@ -557,63 +502,6 @@ function makeProject(
       },
     },
     cleanup,
-  }
-}
-
-async function runProject<T>(
-  page: Page,
-  callback: (project: ProjectHandle) => Promise<T>,
-  options?: ProjectOptions & {
-    serverUrl?: string
-    sdk?: (directory?: string) => ReturnType<typeof createSdk>
-  },
-) {
-  const url = options?.serverUrl
-  const root = await createTestProject(url ? { serverUrl: url } : undefined)
-  const sdk = options?.sdk?.(root) ?? createSdk(root, url)
-  const sessions = new Map<string, string>()
-  const dirs = new Set<string>()
-  await options?.setup?.(root)
-  await seedStorage(page, {
-    directory: root,
-    extra: options?.extra,
-    model: options?.model,
-    serverUrl: url,
-  })
-
-  const gotoSession = async (sessionID?: string) => {
-    await visit(page, sessionPath(root, sessionID))
-    await waitSession(page, {
-      directory: root,
-      sessionID,
-      serverUrl: url,
-      allowAnySession: !sessionID,
-    })
-    const current = sessionIDFromUrl(page.url())
-    if (current) trackSession(current)
-  }
-
-  const trackSession = (sessionID: string, directory?: string) => {
-    sessions.set(sessionID, directory ?? root)
-  }
-
-  const trackDirectory = (directory: string) => {
-    if (directory !== root) dirs.add(directory)
-  }
-
-  try {
-    await options?.beforeGoto?.({ directory: root, sdk })
-    await gotoSession()
-    const slug = await waitSlug(page)
-    return await callback({ directory: root, slug, gotoSession, trackSession, trackDirectory, sdk })
-  } finally {
-    setHealthPhase(page, "cleanup")
-    await Promise.allSettled(
-      Array.from(sessions, ([sessionID, directory]) => cleanupSession({ sessionID, directory, serverUrl: url })),
-    )
-    await Promise.allSettled(Array.from(dirs, (directory) => cleanupTestProject(directory)))
-    await cleanupTestProject(root)
-    setHealthPhase(page, "test")
   }
 }
 
