@@ -512,31 +512,68 @@ async function seedStorage(
     serverUrl?: string
   },
 ) {
-  await seedProjects(page, input)
-  await page.addInitScript((model: { providerID: string; modelID: string }) => {
-    const win = window as E2EWindow
-    win.__opencode_e2e = {
-      ...win.__opencode_e2e,
-      model: {
-        enabled: true,
-      },
-      prompt: {
-        enabled: true,
-      },
-      terminal: {
-        enabled: true,
-        terminals: {},
-      },
-    }
-    localStorage.setItem(
-      "opencode.global.dat:model",
-      JSON.stringify({
-        recent: [model],
-        user: [],
-        variant: {},
-      }),
-    )
-  }, input.model ?? seedModel)
+  const origin = input.serverUrl ?? serverUrl
+  await page.addInitScript(
+    (args: {
+      directory: string
+      serverUrl: string
+      extra: string[]
+      model: { providerID: string; modelID: string }
+    }) => {
+      const key = "opencode.global.dat:server"
+      const raw = localStorage.getItem(key)
+      const parsed = (() => {
+        if (!raw) return undefined
+        try {
+          return JSON.parse(raw) as unknown
+        } catch {
+          return undefined
+        }
+      })()
+
+      const store = parsed && typeof parsed === "object" ? (parsed as Record<string, unknown>) : {}
+      const list = Array.isArray(store.list) ? store.list : []
+      const lastProject = store.lastProject && typeof store.lastProject === "object" ? store.lastProject : {}
+      const projects = store.projects && typeof store.projects === "object" ? store.projects : {}
+      const next = { ...(projects as Record<string, unknown>) }
+      const nextList = list.includes(args.serverUrl) ? list : [args.serverUrl, ...list]
+
+      const add = (origin: string, directory: string) => {
+        const current = next[origin]
+        const items = Array.isArray(current) ? current : []
+        const existing = items.filter(
+          (p): p is { worktree: string; expanded?: boolean } =>
+            !!p &&
+            typeof p === "object" &&
+            "worktree" in p &&
+            typeof (p as { worktree?: unknown }).worktree === "string",
+        )
+        if (existing.some((p) => p.worktree === directory)) return
+        next[origin] = [{ worktree: directory, expanded: true }, ...existing]
+      }
+
+      for (const directory of [args.directory, ...args.extra]) {
+        add("local", directory)
+        add(args.serverUrl, directory)
+      }
+
+      localStorage.setItem(key, JSON.stringify({ list: nextList, projects: next, lastProject }))
+      localStorage.setItem("opencode.settings.dat:defaultServerUrl", args.serverUrl)
+
+      const win = window as E2EWindow
+      win.__opencode_e2e = {
+        ...win.__opencode_e2e,
+        model: { enabled: true },
+        prompt: { enabled: true },
+        terminal: { enabled: true, terminals: {} },
+      }
+      localStorage.setItem(
+        "opencode.global.dat:model",
+        JSON.stringify({ recent: [args.model], user: [], variant: {} }),
+      )
+    },
+    { directory: input.directory, serverUrl: origin, extra: input.extra ?? [], model: input.model ?? seedModel },
+  )
 }
 
 export { expect }
