@@ -125,9 +125,40 @@ export namespace Permission {
     deferred: Deferred.Deferred<void, RejectedError | CorrectedError>
   }
 
+  const FOLLOWUP = new Set(["edit", "read", "list", "glob", "grep"])
+  const FOLLOWUP_MAX = 256
+
+  function followupKey(input: { sessionID: SessionID; tool?: { callID: string } }) {
+    if (!input.tool?.callID) return
+    return `${input.sessionID}:${input.tool.callID}`
+  }
+
+  function followupPick(
+    chained: Map<string, Set<string>>,
+    input: { sessionID: SessionID; permission: string; tool?: { callID: string } },
+  ) {
+    const key = followupKey(input)
+    if (!key) return false
+    const next = chained.get(key)
+    chained.delete(key)
+    return next?.has(input.permission) ?? false
+  }
+
+  function followupSet(chained: Map<string, Set<string>>, input: Request) {
+    const key = followupKey(input)
+    if (!key || input.permission !== "external_directory") return
+    chained.set(key, new Set(FOLLOWUP))
+    while (chained.size > FOLLOWUP_MAX) {
+      const head = chained.keys().next().value
+      if (!head) break
+      chained.delete(head)
+    }
+  }
+
   interface State {
     pending: Map<PermissionID, PendingEntry>
     approved: Ruleset
+    chained: Map<string, Set<string>>
   }
 
   export function evaluate(permission: string, pattern: string, ...rulesets: Ruleset[]): Rule {
@@ -148,6 +179,7 @@ export namespace Permission {
           const state = {
             pending: new Map<PermissionID, PendingEntry>(),
             approved: row?.data ?? [],
+            chained: new Map<string, Set<string>>(),
           }
 
           yield* Effect.addFinalizer(() =>
@@ -156,6 +188,7 @@ export namespace Permission {
                 yield* Deferred.fail(item.deferred, new RejectedError())
               }
               state.pending.clear()
+              state.chained.clear()
             }),
           )
 
@@ -164,7 +197,7 @@ export namespace Permission {
       )
 
       const ask = Effect.fn("Permission.ask")(function* (input: z.infer<typeof AskInput>) {
-        const { approved, pending } = yield* InstanceState.get(state)
+        const { approved, pending, chained } = yield* InstanceState.get(state)
         const { ruleset, ...request } = input
         let needsAsk = false
 
@@ -180,6 +213,7 @@ export namespace Permission {
           needsAsk = true
         }
 
+        if (followupPick(chained, request)) return
         if (!needsAsk) return
 
         const id = request.id ?? PermissionID.ascending()
@@ -201,7 +235,7 @@ export namespace Permission {
       })
 
       const reply = Effect.fn("Permission.reply")(function* (input: z.infer<typeof ReplyInput>) {
-        const { approved, pending } = yield* InstanceState.get(state)
+        const { approved, pending, chained } = yield* InstanceState.get(state)
         const existing = pending.get(input.requestID)
         if (!existing) return
 
@@ -232,6 +266,7 @@ export namespace Permission {
         }
 
         yield* Deferred.succeed(existing.deferred, undefined)
+        followupSet(chained, existing.info)
         if (input.reply === "once") return
 
         for (const pattern of existing.info.always) {

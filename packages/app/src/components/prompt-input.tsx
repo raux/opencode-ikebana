@@ -66,6 +66,7 @@ interface PromptInputProps {
   shouldQueue?: () => boolean
   onQueue?: (draft: FollowupDraft) => void
   onAbort?: () => void
+  onInput?: () => void
   onSubmit?: () => void
 }
 
@@ -853,6 +854,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   }
 
   const handleInput = () => {
+    props.onInput?.()
     const rawParts = parseFromDOM()
     const images = imageAttachments()
     const cursorPosition = getCursorPosition(editorRef)

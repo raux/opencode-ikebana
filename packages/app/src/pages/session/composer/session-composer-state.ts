@@ -23,6 +23,7 @@ export const todoState = (input: {
 }
 
 const idle = { type: "idle" as const }
+const TYPE_MS = 500
 
 export function createSessionComposerState(options?: { closeMs?: number | (() => number) }) {
   const params = useParams()
@@ -36,11 +37,13 @@ export function createSessionComposerState(options?: { closeMs?: number | (() =>
     return sessionQuestionRequest(sync.data.session, sync.data.question, params.id)
   })
 
-  const permissionRequest = createMemo((): PermissionRequest | undefined => {
+  const rawPermission = createMemo((): PermissionRequest | undefined => {
     return sessionPermissionRequest(sync.data.session, sync.data.permission, params.id, (item) => {
       return !permission.autoResponds(item, sdk.directory)
     })
   })
+
+  let typeTimer: number | undefined
 
   const blocked = createMemo(() => {
     const id = params.id
@@ -118,6 +121,18 @@ export function createSessionComposerState(options?: { closeMs?: number | (() =>
     dock: todos().length > 0 && live(),
     closing: false,
     opening: false,
+    typing: false,
+  })
+
+  const permissionRequest = createMemo(() => {
+    const next = rawPermission()
+    if (!next) return
+    if (store.typing) return
+    return next
+  })
+
+  const permissionQueued = createMemo(() => {
+    return store.typing && !!rawPermission()
   })
 
   const permissionResponding = createMemo(() => {
@@ -125,6 +140,26 @@ export function createSessionComposerState(options?: { closeMs?: number | (() =>
     if (!perm) return false
     return store.responding === perm.id
   })
+
+  const clearTyping = () => {
+    if (typeTimer) window.clearTimeout(typeTimer)
+    typeTimer = undefined
+  }
+
+  const stopTyping = () => {
+    clearTyping()
+    if (store.typing) setStore("typing", false)
+  }
+
+  const noteInput = () => {
+    clearTyping()
+    if (!store.typing) setStore("typing", true)
+    typeTimer = window.setTimeout(() => {
+      stopTyping()
+    }, TYPE_MS)
+  }
+
+  const noteSubmit = stopTyping
 
   const decide = (response: "once" | "always" | "reject") => {
     const perm = permissionRequest()
@@ -223,6 +258,8 @@ export function createSessionComposerState(options?: { closeMs?: number | (() =>
     ),
   )
 
+  onCleanup(stopTyping)
+
   onCleanup(() => {
     if (!timer) return
     window.clearTimeout(timer)
@@ -237,8 +274,11 @@ export function createSessionComposerState(options?: { closeMs?: number | (() =>
     blocked,
     questionRequest,
     permissionRequest,
+    permissionQueued,
     permissionResponding,
     decide,
+    noteInput,
+    noteSubmit,
     todos,
     dock: () => store.dock,
     closing: () => store.closing,

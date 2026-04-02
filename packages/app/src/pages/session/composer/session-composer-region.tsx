@@ -1,6 +1,7 @@
 import { Show, createEffect, createMemo, onCleanup } from "solid-js"
 import { createStore } from "solid-js/store"
 import { useSpring } from "@opencode-ai/ui/motion-spring"
+import { Spinner } from "@opencode-ai/ui/spinner"
 import { PromptInput } from "@/components/prompt-input"
 import { useLanguage } from "@/context/language"
 import { usePrompt } from "@/context/prompt"
@@ -160,6 +161,14 @@ export function SessionComposerRegion(props: {
         </Show>
 
         <Show when={!props.state.blocked()}>
+          <Show when={props.state.permissionQueued()}>
+            <div class="pb-2">
+              <div class="w-full rounded-md border border-border-warning/50 bg-background-base/70 px-4 py-2 text-text-weak flex items-center gap-2">
+                <Spinner class="size-3.5 text-icon-warning" />
+                <span>Permission request queued. Stop typing or submit to review.</span>
+              </div>
+            </div>
+          </Show>
           <Show
             when={prompt.ready()}
             fallback={
@@ -244,7 +253,11 @@ export function SessionComposerRegion(props: {
                 shouldQueue={props.followup?.queue}
                 onQueue={props.followup?.onQueue}
                 onAbort={props.followup?.onAbort}
-                onSubmit={props.onSubmit}
+                onInput={props.state.noteInput}
+                onSubmit={() => {
+                  props.state.noteSubmit()
+                  props.onSubmit()
+                }}
               />
             </div>
           </Show>

@@ -41,6 +41,7 @@ export type PromptProps = {
   workspaceID?: string
   visible?: boolean
   disabled?: boolean
+  onInput?: () => void
   onSubmit?: () => void
   ref?: (ref: PromptRef) => void
   hint?: JSX.Element
@@ -898,6 +899,11 @@ export function Prompt(props: PromptProps) {
                   e.preventDefault()
                   return
                 }
+                if (!e.ctrl && !e.meta) {
+                  if (e.name.length === 1 || e.name === "space" || e.name === "backspace" || e.name === "delete") {
+                    props.onInput?.()
+                  }
+                }
                 // Check clipboard for images before terminal-handled paste runs.
                 // This helps terminals that forward Ctrl+V to the app; Windows
                 // Terminal 1.25+ usually handles Ctrl+V before this path.
@@ -977,6 +983,7 @@ export function Prompt(props: PromptProps) {
                   event.preventDefault()
                   return
                 }
+                props.onInput?.()
 
                 // Normalize line endings at the boundary
                 // Windows ConPTY/Terminal often sends CR-only newlines in bracketed paste

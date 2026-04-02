@@ -4,6 +4,7 @@ import { useMutation } from "@tanstack/solid-query"
 import { Button } from "@opencode-ai/ui/button"
 import { DockPrompt } from "@opencode-ai/ui/dock-prompt"
 import { Icon } from "@opencode-ai/ui/icon"
+import { Spinner } from "@opencode-ai/ui/spinner"
 import { showToast } from "@opencode-ai/ui/toast"
 import type { QuestionAnswer, QuestionRequest } from "@opencode-ai/sdk/v2"
 import { useLanguage } from "@/context/language"
@@ -230,6 +231,8 @@ export const SessionQuestionDock: Component<{ request: QuestionRequest; onSubmit
   }))
 
   const sending = createMemo(() => replyMutation.isPending || rejectMutation.isPending)
+  const replying = createMemo(() => replyMutation.isPending)
+  const rejecting = createMemo(() => rejectMutation.isPending)
 
   const reply = async (answers: QuestionAnswer[]) => {
     if (sending()) return
@@ -449,7 +452,12 @@ export const SessionQuestionDock: Component<{ request: QuestionRequest; onSubmit
       footer={
         <>
           <Button variant="ghost" size="large" disabled={sending()} onClick={reject} aria-keyshortcuts="Escape">
-            {language.t("ui.common.dismiss")}
+            <span class="inline-flex items-center gap-2">
+              <Show when={rejecting()}>
+                <Spinner class="size-3.5" />
+              </Show>
+              {language.t("ui.common.dismiss")}
+            </span>
           </Button>
           <div data-slot="question-footer-actions">
             <Show when={store.tab > 0}>
@@ -464,7 +472,12 @@ export const SessionQuestionDock: Component<{ request: QuestionRequest; onSubmit
               onClick={next}
               aria-keyshortcuts="Meta+Enter Control+Enter"
             >
-              {last() ? language.t("ui.common.submit") : language.t("ui.common.next")}
+              <span class="inline-flex items-center gap-2">
+                <Show when={replying()}>
+                  <Spinner class="size-3.5" />
+                </Show>
+                {last() ? language.t("ui.common.submit") : language.t("ui.common.next")}
+              </span>
             </Button>
           </div>
         </>

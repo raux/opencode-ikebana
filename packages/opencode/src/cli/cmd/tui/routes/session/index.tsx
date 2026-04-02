@@ -7,6 +7,7 @@ import {
   For,
   Match,
   on,
+  onCleanup,
   onMount,
   Show,
   Switch,
@@ -106,6 +107,7 @@ function use() {
 }
 
 export function Session() {
+  const TYPE_MS = 700
   const route = useRouteData("session")
   const { navigate } = useRoute()
   const sync = useSync()
@@ -129,6 +131,35 @@ export function Session() {
     if (session()?.parentID) return []
     return children().flatMap((x) => sync.data.question[x.id] ?? [])
   })
+  const [typing, setTyping] = createSignal(false)
+  let typeTimer: ReturnType<typeof setTimeout> | undefined
+  const visiblePermissions = createMemo(() => {
+    if (typing()) return []
+    return permissions()
+  })
+  const queuedPermission = createMemo(() => typing() && permissions().length > 0)
+
+  function clearTyping() {
+    if (typeTimer) clearTimeout(typeTimer)
+    typeTimer = undefined
+  }
+
+  function stopTyping() {
+    clearTyping()
+    if (typing()) setTyping(false)
+  }
+
+  function noteInput() {
+    clearTyping()
+    if (!typing()) setTyping(true)
+    typeTimer = setTimeout(() => {
+      stopTyping()
+    }, TYPE_MS)
+  }
+
+  const noteSubmit = stopTyping
+
+  onCleanup(stopTyping)
 
   const pending = createMemo(() => {
     return messages().findLast((x) => x.role === "assistant" && !x.time.completed)?.id
@@ -1145,17 +1176,24 @@ export function Session() {
               </For>
             </scrollbox>
             <box flexShrink={0}>
-              <Show when={permissions().length > 0}>
-                <PermissionPrompt request={permissions()[0]} />
+              <Show when={visiblePermissions().length > 0}>
+                <PermissionPrompt request={visiblePermissions()[0]} />
               </Show>
-              <Show when={permissions().length === 0 && questions().length > 0}>
+              <Show when={visiblePermissions().length === 0 && questions().length > 0}>
                 <QuestionPrompt request={questions()[0]} />
               </Show>
               <Show when={session()?.parentID}>
                 <SubagentFooter />
               </Show>
+              <Show when={!session()?.parentID && queuedPermission()}>
+                <box flexDirection="row" gap={1} paddingLeft={2} paddingRight={3} paddingBottom={1} alignItems="center">
+                  <Spinner color={theme.warning}>Permission request queued</Spinner>
+                  <text fg={theme.textMuted}>Stop typing or submit to review.</text>
+                </box>
+              </Show>
               <Prompt
-                visible={!session()?.parentID && permissions().length === 0 && questions().length === 0}
+                visible={!session()?.parentID && visiblePermissions().length === 0 && questions().length === 0}
+                onInput={noteInput}
                 ref={(r) => {
                   prompt = r
                   promptRef.set(r)
@@ -1164,8 +1202,9 @@ export function Session() {
                     r.set(route.initialPrompt)
                   }
                 }}
-                disabled={permissions().length > 0 || questions().length > 0}
+                disabled={visiblePermissions().length > 0 || questions().length > 0}
                 onSubmit={() => {
+                  noteSubmit()
                   toBottom()
                 }}
                 sessionID={route.sessionID}

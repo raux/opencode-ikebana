@@ -642,6 +642,102 @@ test("reply - once resolves the pending ask", async () => {
   })
 })
 
+test("reply - external_directory once auto-resolves next same-call edit ask", async () => {
+  await using tmp = await tmpdir({ git: true })
+  await Instance.provide({
+    directory: tmp.path,
+    fn: async () => {
+      const tool = {
+        messageID: MessageID.make("msg_followup_once"),
+        callID: "call_followup_once",
+      }
+      const ext = Permission.ask({
+        id: PermissionID.make("per_followup_ext_once"),
+        sessionID: SessionID.make("session_followup_once"),
+        permission: "external_directory",
+        patterns: ["/tmp/outside/*"],
+        metadata: {},
+        always: ["/tmp/outside/*"],
+        tool,
+        ruleset: [],
+      })
+
+      await waitForPending(1)
+
+      await Permission.reply({
+        requestID: PermissionID.make("per_followup_ext_once"),
+        reply: "once",
+      })
+
+      await expect(ext).resolves.toBeUndefined()
+      await expect(
+        Permission.ask({
+          id: PermissionID.make("per_followup_edit_once"),
+          sessionID: SessionID.make("session_followup_once"),
+          permission: "edit",
+          patterns: ["../outside/file.txt"],
+          metadata: {},
+          always: ["*"],
+          tool,
+          ruleset: [],
+        }),
+      ).resolves.toBeUndefined()
+      expect(await Permission.list()).toHaveLength(0)
+    },
+  })
+})
+
+test("reply - external_directory followup does not auto-resolve bash asks", async () => {
+  await using tmp = await tmpdir({ git: true })
+  await Instance.provide({
+    directory: tmp.path,
+    fn: async () => {
+      const tool = {
+        messageID: MessageID.make("msg_followup_bash"),
+        callID: "call_followup_bash",
+      }
+      const ext = Permission.ask({
+        id: PermissionID.make("per_followup_ext_bash"),
+        sessionID: SessionID.make("session_followup_bash"),
+        permission: "external_directory",
+        patterns: ["/tmp/outside/*"],
+        metadata: {},
+        always: ["/tmp/outside/*"],
+        tool,
+        ruleset: [],
+      })
+
+      await waitForPending(1)
+
+      await Permission.reply({
+        requestID: PermissionID.make("per_followup_ext_bash"),
+        reply: "once",
+      })
+
+      await expect(ext).resolves.toBeUndefined()
+
+      const bash = Permission.ask({
+        id: PermissionID.make("per_followup_bash"),
+        sessionID: SessionID.make("session_followup_bash"),
+        permission: "bash",
+        patterns: ["cat /tmp/outside/file.txt"],
+        metadata: {},
+        always: ["cat *"],
+        tool,
+        ruleset: [],
+      })
+
+      const pending = await waitForPending(1)
+      expect(pending.map((item) => item.id)).toEqual([PermissionID.make("per_followup_bash")])
+      await Permission.reply({
+        requestID: PermissionID.make("per_followup_bash"),
+        reply: "reject",
+      })
+      await expect(bash).rejects.toBeInstanceOf(Permission.RejectedError)
+    },
+  })
+})
+
 test("reply - reject throws RejectedError", async () => {
   await using tmp = await tmpdir({ git: true })
   await Instance.provide({
