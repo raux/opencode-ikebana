@@ -63,7 +63,7 @@ export class AsyncQueue<T> implements AsyncIterable<T> {
     })
   }
 
-  done() {
+  untrack() {
     if (this.id === undefined) return
     all.delete(this.id)
   }

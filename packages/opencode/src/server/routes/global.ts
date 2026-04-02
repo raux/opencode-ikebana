@@ -20,7 +20,7 @@ export const GlobalDisposedEvent = BusEvent.define("global.disposed", z.object({
 async function streamEvents(c: Context, name: string, subscribe: (q: AsyncQueue<string | null>) => () => void) {
   return streamSSE(c, async (stream) => {
     const q = new AsyncQueue<string | null>({ name })
-    let done = false
+    let closed = false
 
     q.push(
       JSON.stringify({
@@ -44,12 +44,12 @@ async function streamEvents(c: Context, name: string, subscribe: (q: AsyncQueue<
     }, 10_000)
 
     const stop = () => {
-      if (done) return
-      done = true
+      if (closed) return
+      closed = true
       clearInterval(heartbeat)
       unsub()
       q.push(null)
-      q.done()
+      q.untrack()
       log.info("global event disconnected")
     }
 
