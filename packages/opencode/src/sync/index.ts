@@ -2,6 +2,7 @@ import z from "zod"
 import type { ZodObject } from "zod"
 import { EventEmitter } from "events"
 import { Effect, Layer, ServiceMap } from "effect"
+import { InstanceState } from "@/effect/instance-state"
 import { makeRuntime } from "@/effect/run-service"
 import { Database, eq } from "@/storage/db"
 import { Bus as ProjectBus } from "@/bus"
@@ -219,7 +220,7 @@ export namespace SyncEvent {
           )
         }
 
-        yield* Effect.sync(() => process(def, event, { publish: !!options?.republish }))
+        yield* InstanceState.withALS(() => process(def, event, { publish: !!options?.republish }))
       })
 
       const run: Interface["run"] = Effect.fn("SyncEvent.run")(function* <Def extends Definition>(
@@ -235,7 +236,7 @@ export namespace SyncEvent {
           throw new Error(`SyncEvent.run: running old versions of events is not allowed: ${def.type}`)
         }
 
-        yield* Effect.sync(() =>
+        yield* InstanceState.withALS(() =>
           Database.transaction(
             (tx) => {
               const id = EventID.ascending()
