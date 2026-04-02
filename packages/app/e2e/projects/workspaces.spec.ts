@@ -12,7 +12,6 @@ import {
   clickMenuItem,
   confirmDialog,
   openSidebar,
-  openProjectMenu,
   openWorkspaceMenu,
   resolveSlug,
   setWorkspacesEnabled,
@@ -125,21 +124,7 @@ test("non-git projects keep workspace mode disabled", async ({ page, project }) 
 
     await openSidebar(page)
     await expect(page.getByRole("button", { name: "New workspace" })).toHaveCount(0)
-
-    const trigger = page.locator('[data-action="project-menu"]').first()
-    const hasMenu = await trigger
-      .isVisible()
-      .then((x) => x)
-      .catch(() => false)
-    if (!hasMenu) return
-
-    const menu = await openProjectMenu(page, nonGitSlug)
-
-    const toggle = menu.locator('[data-action="project-workspaces-toggle"]').first()
-
-    await expect(toggle).toBeVisible()
-    await expect(toggle).toBeDisabled()
-    await expect(menu.getByRole("menuitem", { name: "New workspace" })).toHaveCount(0)
+    await expect(page.getByRole("button", { name: "Create Git repository" })).toBeVisible()
   } finally {
     await cleanupTestProject(nonGit)
   }
