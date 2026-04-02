@@ -276,8 +276,8 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
     if (boundary) throw new Error(boundary)
   },
   directory: [
-    async ({}, use) => {
-      await use(await getWorktree())
+    async ({ backend }, use) => {
+      await use(await getWorktree(backend.url))
     },
     { scope: "worker" },
   ],
@@ -287,15 +287,15 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
     },
     { scope: "worker" },
   ],
-  sdk: async ({ directory }, use) => {
-    await use(createSdk(directory))
+  sdk: async ({ directory, backend }, use) => {
+    await use(backend.sdk(directory))
   },
-  gotoSession: async ({ page, directory }, use) => {
-    await seedStorage(page, { directory })
+  gotoSession: async ({ page, directory, backend }, use) => {
+    await seedStorage(page, { directory, serverUrl: backend.url })
 
     const gotoSession = async (sessionID?: string) => {
       await visit(page, sessionPath(directory, sessionID))
-      await waitSession(page, { directory, sessionID })
+      await waitSession(page, { directory, sessionID, serverUrl: backend.url })
     }
     await use(gotoSession)
   },

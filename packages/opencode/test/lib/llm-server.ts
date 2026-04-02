@@ -684,15 +684,6 @@ export class TestLLMServer extends ServiceMap.Service<TestLLMServer, TestLLMServ
           if (mode === "responses") return send(responses(auto, modelFrom(body)))
           return send(auto)
         }
-        // Auto-acknowledge tool-result follow-ups so tests only need to
-        // queue one response per tool call instead of two.
-        if (isToolResultFollowUp(body)) {
-          hits = [...hits, current]
-          yield* notify()
-          const auto: Sse = { type: "sse", head: [role()], tail: [textLine("ok"), finishLine("stop")] }
-          if (mode === "responses") return send(responses(auto, modelFrom(body)))
-          return send(auto)
-        }
         const next = pull(current)
         if (!next) {
           hits = [...hits, current]
