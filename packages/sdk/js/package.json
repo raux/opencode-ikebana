@@ -27,5 +27,7 @@
     "typescript": "catalog:",
     "@typescript/native-preview": "catalog:"
   },
-  "dependencies": {}
+  "dependencies": {
+    "cross-spawn": "^7.0.6"
+  }
 }
