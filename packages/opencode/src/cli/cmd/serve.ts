@@ -1,3 +1,4 @@
+import { spawnSync } from "node:child_process"
 import { createHash, randomBytes } from "node:crypto"
 import os from "node:os"
 import { Server } from "../../server/server"
@@ -19,6 +20,13 @@ type PairPayload = {
   relayURL: string
   relaySecret: string
   hosts: string[]
+}
+
+type TailscaleStatus = {
+  Self?: {
+    DNSName?: unknown
+    TailscaleIPs?: unknown
+  }
 }
 
 function ipTier(address: string): number {
@@ -107,6 +115,38 @@ function secretHash(input: string) {
   return `${createHash("sha256").update(input).digest("hex").slice(0, 12)}...`
 }
 
+export function autoTailscaleAdvertiseHost(hostname: string, status: unknown): string | undefined {
+  const self = (status as TailscaleStatus | undefined)?.Self
+  if (!self) return
+
+  const dnsName = typeof self.DNSName === "string" ? self.DNSName.replace(/\.+$/, "") : ""
+  if (!dnsName || !dnsName.toLowerCase().endsWith(".ts.net")) return
+
+  if (hostname === "0.0.0.0" || hostname === "::" || hostname === dnsName) {
+    return dnsName
+  }
+
+  const tailscaleIPs = Array.isArray(self.TailscaleIPs)
+    ? self.TailscaleIPs.filter((item): item is string => typeof item === "string" && item.length > 0)
+    : []
+  if (tailscaleIPs.includes(hostname)) {
+    return dnsName
+  }
+}
+
+function readTailscaleAdvertiseHost(hostname: string) {
+  try {
+    const result = spawnSync("tailscale", ["status", "--json"], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    })
+    if (result.status !== 0 || result.error || !result.stdout.trim()) return
+    return autoTailscaleAdvertiseHost(hostname, JSON.parse(result.stdout))
+  } catch {
+    return
+  }
+}
+
 async function printPairQR(pair: PairPayload) {
   const link = pairLink(pair)
   const qrConfig = {
@@ -171,7 +211,14 @@ export const ServeCommand = cmd({
       .split(",")
       .map((item) => item.trim())
       .filter(Boolean)
-    const advertiseHosts = [...new Set([...advertiseHostsFromArg, ...advertiseHostsFromEnv])]
+    const tailscaleAdvertiseHost = readTailscaleAdvertiseHost(opts.hostname)
+    const advertiseHosts = [
+      ...new Set([
+        ...advertiseHostsFromArg,
+        ...advertiseHostsFromEnv,
+        ...(tailscaleAdvertiseHost ? [tailscaleAdvertiseHost] : []),
+      ]),
+    ]
 
     const input = (args["relay-secret"] ?? process.env.OPENCODE_EXPERIMENTAL_PUSH_RELAY_SECRET ?? "").trim()
     const relaySecret = input || randomBytes(18).toString("base64url")
@@ -180,7 +227,7 @@ export const ServeCommand = cmd({
     if (connectQR) {
       const pairHosts = hosts(opts.hostname, opts.port > 0 ? opts.port : 4096, advertiseHosts, false)
       if (!pairHosts.length) {
-        console.log("connect qr mode requires at least one valid --advertise-host value")
+        console.log("connect qr mode requires at least one valid advertised host")
         return
       }
 
