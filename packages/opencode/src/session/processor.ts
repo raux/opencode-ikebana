@@ -426,7 +426,6 @@ export namespace SessionProcessor {
             sessionID: ctx.assistantMessage.sessionID,
             error: ctx.assistantMessage.error,
           })
-          yield* status.set(ctx.sessionID, { type: "idle" })
         })
 
         const abort = Effect.fn("SessionProcessor.abort")(() =>

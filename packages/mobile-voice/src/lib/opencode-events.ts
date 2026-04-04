@@ -48,22 +48,6 @@ export function classifyMonitorEvent(event: OpenCodeEvent): MonitorEventType | n
     }
   }
 
-  if (type === "message.updated") {
-    const info = event.properties?.info
-    if (info && typeof info === "object") {
-      const role = (info as Record<string, unknown>).role
-      const time = (info as Record<string, unknown>).time
-      if (
-        role === "assistant" &&
-        time &&
-        typeof time === "object" &&
-        "completed" in (time as Record<string, unknown>)
-      ) {
-        return "complete"
-      }
-    }
-  }
-
   return null
 }
 
