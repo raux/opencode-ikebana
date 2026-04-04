@@ -40,6 +40,11 @@ export type MonitorJob = {
 
 export type PermissionDecision = "once" | "always" | "reject"
 
+export type PromptHistoryEntry = {
+  promptText: string
+  userMessageID: string
+}
+
 type SessionRuntimeStatus = "idle" | "busy" | "retry"
 
 type PermissionPromptState = "idle" | "pending" | "granted" | "denied"
@@ -121,6 +126,8 @@ export function useMonitoring({
   const [monitorJob, setMonitorJob] = useState<MonitorJob | null>(null)
   const [monitorStatus, setMonitorStatus] = useState("")
   const [latestAssistantResponse, setLatestAssistantResponse] = useState("")
+  const [latestPromptText, setLatestPromptText] = useState("")
+  const [promptHistory, setPromptHistory] = useState<PromptHistoryEntry[]>([])
   const [latestAssistantContext, setLatestAssistantContext] = useState<LatestAssistantContext | null>(null)
   const [pendingPermissions, setPendingPermissions] = useState<PendingPermissionRequest[]>([])
   const [replyingPermissionID, setReplyingPermissionID] = useState<string | null>(null)
@@ -250,10 +257,14 @@ export function useMonitoring({
 
         const payload = (await response.json()) as unknown
         const latest = findLatestAssistantCompletion(payload)
+        const promptText = findLatestUserPrompt(payload)
+        const history = buildPromptHistory(payload)
 
         if (latestAssistantRequestRef.current !== requestID) return
         if (activeSessionIdRef.current !== sessionID) return
         setLatestAssistantResponse(latest.text)
+        setLatestPromptText(promptText)
+        setPromptHistory(history)
         setLatestAssistantContext(latest.context)
         if (latest.text) {
           setAgentStateDismissed(false)
@@ -262,6 +273,8 @@ export function useMonitoring({
         if (latestAssistantRequestRef.current !== requestID) return
         if (activeSessionIdRef.current !== sessionID) return
         setLatestAssistantResponse("")
+        setLatestPromptText("")
+        setPromptHistory([])
         setLatestAssistantContext(null)
       }
     },
@@ -446,6 +459,8 @@ export function useMonitoring({
 
   useEffect(() => {
     setLatestAssistantResponse("")
+    setLatestPromptText("")
+    setPromptHistory([])
     setLatestAssistantContext(null)
     setPendingPermissions([])
     setAgentStateDismissed(false)
@@ -790,6 +805,10 @@ export function useMonitoring({
     monitorJob,
     monitorStatus,
     setMonitorStatus,
+    latestPromptText,
+    setLatestPromptText,
+    promptHistory,
+    setPromptHistory,
     latestAssistantResponse,
     latestAssistantContext,
     activePermissionRequest,
@@ -839,10 +858,74 @@ function cleanSessionText(text: string): string {
   return cleanTranscriptText(text).trimStart()
 }
 
+function extractMessageText(parts: SessionMessagePart[]): string {
+  const textParts: string[] = []
+
+  for (const part of parts) {
+    if (!part || part.type !== "text" || typeof part.text !== "string") continue
+
+    const text = cleanSessionText(part.text)
+    if (text.length > 0) {
+      textParts.push(text)
+    }
+  }
+
+  return textParts.join("\n\n")
+}
+
 function maybeString(value: unknown): string | null {
   if (typeof value !== "string") return null
   const trimmed = value.trim()
   return trimmed.length > 0 ? trimmed : null
+}
+
+function buildPromptHistory(payload: unknown): PromptHistoryEntry[] {
+  if (!Array.isArray(payload)) return []
+
+  const entries: PromptHistoryEntry[] = []
+
+  for (const candidate of payload) {
+    const msg = candidate as SessionMessagePayload
+    if (!msg || typeof msg !== "object") continue
+
+    const info = msg.info as SessionMessageInfo
+    if (!info || typeof info !== "object") continue
+    if (info.role !== "user") continue
+
+    const id = (info as { id?: unknown }).id
+    if (typeof id !== "string") continue
+
+    const parts = Array.isArray(msg.parts) ? (msg.parts as SessionMessagePart[]) : []
+    const text = extractMessageText(parts)
+    if (text.length === 0) continue
+
+    entries.push({ promptText: text, userMessageID: id })
+  }
+
+  return entries
+}
+
+function findLatestUserPrompt(payload: unknown): string {
+  if (!Array.isArray(payload)) {
+    return ""
+  }
+
+  for (let index = payload.length - 1; index >= 0; index -= 1) {
+    const candidate = payload[index] as SessionMessagePayload
+    if (!candidate || typeof candidate !== "object") continue
+
+    const info = candidate.info as SessionMessageInfo
+    if (!info || typeof info !== "object") continue
+    if (info.role !== "user") continue
+
+    const parts = Array.isArray(candidate.parts) ? (candidate.parts as SessionMessagePart[]) : []
+    const text = extractMessageText(parts)
+    if (text.length > 0) {
+      return text
+    }
+  }
+
+  return ""
 }
 
 function extractAssistantContext(info: SessionMessageInfo): LatestAssistantContext | null {
@@ -887,11 +970,7 @@ function findLatestAssistantCompletion(payload: unknown): LatestAssistantSnapsho
     const context = extractAssistantContext(info)
 
     const parts = Array.isArray(candidate.parts) ? (candidate.parts as SessionMessagePart[]) : []
-    const text = parts
-      .filter((part) => part && part.type === "text" && typeof part.text === "string")
-      .map((part) => cleanSessionText(part.text as string))
-      .filter((part) => part.length > 0)
-      .join("\n\n")
+    const text = extractMessageText(parts)
 
     if (text.length > 0 || context) {
       return {

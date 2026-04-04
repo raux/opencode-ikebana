@@ -5,6 +5,7 @@ import {
   View,
   Pressable,
   ScrollView,
+  FlatList,
   Modal,
   Alert,
   ActivityIndicator,
@@ -38,7 +39,12 @@ import { fetch as expoFetch } from "expo/fetch"
 import { buildPermissionCardModel } from "@/lib/pending-permissions"
 import { unregisterRelayDevice } from "@/lib/relay-client"
 import { useMdnsDiscovery } from "@/hooks/use-mdns-discovery"
-import { useMonitoring, type MonitorJob, type PermissionDecision } from "@/hooks/use-monitoring"
+import {
+  useMonitoring,
+  type MonitorJob,
+  type PermissionDecision,
+  type PromptHistoryEntry,
+} from "@/hooks/use-monitoring"
 import { DEFAULT_RELAY_URL, looksLikeLocalHost, useServerSessions } from "@/hooks/use-server-sessions"
 import { ensureNotificationPermissions, getDevicePushToken } from "@/notifications/monitoring-notifications"
 
@@ -728,6 +734,8 @@ export default function DictationScreen() {
   const scanLockRef = useRef(false)
   const pairProbeRunRef = useRef(0)
   const whisperRestoredRef = useRef(false)
+  const promptPagerRef = useRef<FlatList<PromptHistoryEntry | "live">>(null)
+  const promptPagerPageRef = useRef(-1)
 
   const closeDropdown = useCallback(() => {
     setDropdownMode("none")
@@ -766,13 +774,17 @@ export default function DictationScreen() {
     activePermissionRequest,
     devicePushToken,
     latestAssistantContext,
+    latestPromptText,
     latestAssistantResponse,
     monitorJob,
     monitorStatus,
     pendingPermissionCount,
+    promptHistory,
     respondingPermissionID,
     respondToPermission,
     setDevicePushToken,
+    setLatestPromptText,
+    setPromptHistory,
     setMonitorStatus,
   } = useMonitoring({
     completePlayer,
@@ -1766,6 +1778,8 @@ export default function DictationScreen() {
         throw new Error(`Prompt request failed (${response.status})`)
       }
 
+      setLatestPromptText(text)
+
       const nextJob: MonitorJob = {
         id: `job-${Date.now()}`,
         sessionID: session.id,
@@ -1813,6 +1827,7 @@ export default function DictationScreen() {
     isSending,
     serversRef,
     setMonitorStatus,
+    setLatestPromptText,
     sendOutProgress,
     sendPlayer,
     transcribedText,
@@ -1828,6 +1843,14 @@ export default function DictationScreen() {
     setDropdownMode("none")
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {})
     isHoldingRef.current = true
+    // Snap pager to live page (index 0) so user sees their transcription
+    if (promptPagerRef.current) {
+      try {
+        promptPagerRef.current.scrollToIndex({ index: 0, animated: true })
+      } catch {
+        // FlatList may not have items yet
+      }
+    }
     void startRecording()
   }, [startRecording])
 
@@ -1910,6 +1933,32 @@ export default function DictationScreen() {
   const isReplyingToActivePermission =
     activePermissionRequest !== null && respondingPermissionID === activePermissionRequest.id
   const displayedTranscript = isSending ? "" : transcribedText
+  const [transcriptionPanelWidth, setTranscriptionPanelWidth] = useState(0)
+  const handleTranscriptionPanelLayout = useCallback((e: LayoutChangeEvent) => {
+    setTranscriptionPanelWidth(e.nativeEvent.layout.width)
+  }, [])
+  const pagerPageWidth = transcriptionPanelWidth || 1
+
+  // Prompt history pager: "live" at index 0 (leftmost), then history newest-first to the right.
+  // Swipe right-to-left to browse older prompts, swipe left-to-right to return to live.
+  const promptPagerData = useMemo<(PromptHistoryEntry | "live")[]>(
+    () => (promptHistory.length > 0 ? ["live" as const, ...[...promptHistory].reverse()] : []),
+    [promptHistory],
+  )
+  const promptPagerKeyExtractor = useCallback(
+    (item: PromptHistoryEntry | "live") => (item === "live" ? "live" : item.userMessageID),
+    [],
+  )
+  const handlePromptPagerSnap = useCallback(
+    (e: { nativeEvent: { contentOffset: { x: number } } }) => {
+      const pageIndex = Math.round(e.nativeEvent.contentOffset.x / pagerPageWidth)
+      if (pageIndex !== promptPagerPageRef.current) {
+        promptPagerPageRef.current = pageIndex
+        void Haptics.selectionAsync().catch(() => {})
+      }
+    },
+    [pagerPageWidth],
+  )
   const isDropdownOpen = dropdownMode !== "none"
   const effectiveDropdownMode = isDropdownOpen ? dropdownMode : dropdownRenderMode
   const isCreatingSession = sessionCreateMode !== null
@@ -2768,7 +2817,7 @@ export default function DictationScreen() {
       body: "Control only listens while you hold the record button.",
       primaryLabel: microphonePermissionState === "pending" ? "Requesting microphone access..." : "Continue",
       primaryDisabled: microphonePermissionState === "pending",
-      secondaryLabel: "Continue without granting",
+      secondaryLabel: undefined,
       visualTag: "MIC",
       visualSurfaceStyle: styles.onboardingVisualSurfaceMic,
       visualOrbStyle: styles.onboardingVisualOrbMic,
@@ -2779,7 +2828,7 @@ export default function DictationScreen() {
       body: "Get alerts when your OpenCode run finishes, fails, or needs your attention.",
       primaryLabel: notificationPermissionState === "pending" ? "Requesting notification access..." : "Continue",
       primaryDisabled: notificationPermissionState === "pending",
-      secondaryLabel: "Continue without granting",
+      secondaryLabel: undefined,
       visualTag: "PUSH",
       visualSurfaceStyle: styles.onboardingVisualSurfaceNotifications,
       visualOrbStyle: styles.onboardingVisualOrbNotifications,
@@ -2790,7 +2839,7 @@ export default function DictationScreen() {
       body: "This lets Control discover your machine on the same network.",
       primaryLabel: localNetworkPermissionState === "pending" ? "Requesting local network access..." : "Continue",
       primaryDisabled: localNetworkPermissionState === "pending",
-      secondaryLabel: "Continue without granting",
+      secondaryLabel: undefined,
       visualTag: "LAN",
       visualSurfaceStyle: styles.onboardingVisualSurfaceNetwork,
       visualOrbStyle: styles.onboardingVisualOrbNetwork,
@@ -2918,19 +2967,21 @@ export default function DictationScreen() {
               />
             </Pressable>
 
-            <Pressable
-              onPress={() => {
-                if (clampedOnboardingStep < onboardingStepCount - 1) {
-                  setOnboardingStep((step) => Math.min(step + 1, onboardingStepCount - 1))
-                  return
-                }
+            {onboardingSecondaryLabel ? (
+              <Pressable
+                onPress={() => {
+                  if (clampedOnboardingStep < onboardingStepCount - 1) {
+                    setOnboardingStep((step) => Math.min(step + 1, onboardingStepCount - 1))
+                    return
+                  }
 
-                completeOnboarding(false)
-              }}
-              style={({ pressed }) => [styles.onboardingSecondaryButton, pressed && styles.clearButtonPressed]}
-            >
-              <Text style={styles.onboardingSecondaryText}>{onboardingSecondaryLabel}</Text>
-            </Pressable>
+                  completeOnboarding(false)
+                }}
+                style={({ pressed }) => [styles.onboardingSecondaryButton, pressed && styles.clearButtonPressed]}
+              >
+                <Text style={styles.onboardingSecondaryText}>{onboardingSecondaryLabel}</Text>
+              </Pressable>
+            ) : null}
           </View>
         </View>
       </SafeAreaView>
@@ -3335,7 +3386,7 @@ export default function DictationScreen() {
                 </ScrollView>
               </View>
 
-              <View style={styles.transcriptionPanel}>
+              <View style={styles.transcriptionPanel} onLayout={handleTranscriptionPanelLayout}>
                 <View style={styles.transcriptionTopActions} pointerEvents="box-none">
                   <Pressable
                     onPress={handleOpenWhisperSettings}
@@ -3364,20 +3415,66 @@ export default function DictationScreen() {
                   </View>
                 ) : null}
 
-                <ScrollView
-                  ref={scrollViewRef}
-                  style={styles.transcriptionScroll}
-                  contentContainerStyle={styles.transcriptionContent}
-                  onContentSizeChange={() => scrollViewRef.current?.scrollToEnd({ animated: true })}
-                >
-                  <Animated.View style={animatedTranscriptSendStyle}>
-                    {displayedTranscript ? (
-                      <Text style={styles.transcriptionText}>{displayedTranscript}</Text>
-                    ) : isSending ? null : (
-                      <Text style={styles.placeholderText}>Your transcription will appear here…</Text>
-                    )}
-                  </Animated.View>
-                </ScrollView>
+                {promptPagerData.length > 1 ? (
+                  <FlatList
+                    ref={promptPagerRef}
+                    data={promptPagerData}
+                    keyExtractor={promptPagerKeyExtractor}
+                    horizontal
+                    pagingEnabled
+                    bounces={false}
+                    showsHorizontalScrollIndicator={false}
+                    onMomentumScrollEnd={handlePromptPagerSnap}
+                    initialScrollIndex={0}
+                    getItemLayout={(_data, index) => ({
+                      length: pagerPageWidth,
+                      offset: pagerPageWidth * index,
+                      index,
+                    })}
+                    style={styles.transcriptionScroll}
+                    renderItem={({ item }) =>
+                      item === "live" ? (
+                        <ScrollView
+                          ref={scrollViewRef}
+                          style={{ width: pagerPageWidth }}
+                          contentContainerStyle={styles.transcriptionContent}
+                          onContentSizeChange={() => scrollViewRef.current?.scrollToEnd({ animated: true })}
+                        >
+                          <Animated.View style={animatedTranscriptSendStyle}>
+                            {displayedTranscript ? (
+                              <Text style={styles.transcriptionText}>{displayedTranscript}</Text>
+                            ) : isSending ? null : (
+                              <Text style={styles.placeholderText}>Your transcription will appear here…</Text>
+                            )}
+                          </Animated.View>
+                        </ScrollView>
+                      ) : (
+                        <ScrollView
+                          style={{ width: pagerPageWidth }}
+                          contentContainerStyle={styles.transcriptionContent}
+                        >
+                          <Text style={styles.promptHistoryLabel}>Previous prompt</Text>
+                          <Text style={styles.promptHistoryText}>{item.promptText}</Text>
+                        </ScrollView>
+                      )
+                    }
+                  />
+                ) : (
+                  <ScrollView
+                    ref={scrollViewRef}
+                    style={styles.transcriptionScroll}
+                    contentContainerStyle={styles.transcriptionContent}
+                    onContentSizeChange={() => scrollViewRef.current?.scrollToEnd({ animated: true })}
+                  >
+                    <Animated.View style={animatedTranscriptSendStyle}>
+                      {displayedTranscript ? (
+                        <Text style={styles.transcriptionText}>{displayedTranscript}</Text>
+                      ) : isSending ? null : (
+                        <Text style={styles.placeholderText}>Your transcription will appear here…</Text>
+                      )}
+                    </Animated.View>
+                  </ScrollView>
+                )}
 
                 <Animated.View
                   style={[styles.waveformBoxesRow, animatedWaveformRowStyle]}
@@ -3451,7 +3548,7 @@ export default function DictationScreen() {
             ) : null}
           </>
         ) : (
-          <View style={styles.transcriptionPanel}>
+          <View style={styles.transcriptionPanel} onLayout={handleTranscriptionPanelLayout}>
             <View style={styles.transcriptionTopActions} pointerEvents="box-none">
               <Pressable
                 onPress={handleOpenWhisperSettings}
@@ -3480,20 +3577,59 @@ export default function DictationScreen() {
               </View>
             ) : null}
 
-            <ScrollView
-              ref={scrollViewRef}
-              style={styles.transcriptionScroll}
-              contentContainerStyle={styles.transcriptionContent}
-              onContentSizeChange={() => scrollViewRef.current?.scrollToEnd({ animated: true })}
-            >
-              <Animated.View style={animatedTranscriptSendStyle}>
-                {displayedTranscript ? (
-                  <Text style={styles.transcriptionText}>{displayedTranscript}</Text>
-                ) : isSending ? null : (
-                  <Text style={styles.placeholderText}>Your transcription will appear here…</Text>
-                )}
-              </Animated.View>
-            </ScrollView>
+            {promptPagerData.length > 1 ? (
+              <FlatList
+                ref={promptPagerRef}
+                data={promptPagerData}
+                keyExtractor={promptPagerKeyExtractor}
+                horizontal
+                pagingEnabled
+                bounces={false}
+                showsHorizontalScrollIndicator={false}
+                onMomentumScrollEnd={handlePromptPagerSnap}
+                initialScrollIndex={0}
+                getItemLayout={(_data, index) => ({ length: pagerPageWidth, offset: pagerPageWidth * index, index })}
+                style={styles.transcriptionScroll}
+                renderItem={({ item }) =>
+                  item === "live" ? (
+                    <ScrollView
+                      ref={scrollViewRef}
+                      style={{ width: pagerPageWidth }}
+                      contentContainerStyle={styles.transcriptionContent}
+                      onContentSizeChange={() => scrollViewRef.current?.scrollToEnd({ animated: true })}
+                    >
+                      <Animated.View style={animatedTranscriptSendStyle}>
+                        {displayedTranscript ? (
+                          <Text style={styles.transcriptionText}>{displayedTranscript}</Text>
+                        ) : isSending ? null : (
+                          <Text style={styles.placeholderText}>Your transcription will appear here…</Text>
+                        )}
+                      </Animated.View>
+                    </ScrollView>
+                  ) : (
+                    <ScrollView style={{ width: pagerPageWidth }} contentContainerStyle={styles.transcriptionContent}>
+                      <Text style={styles.promptHistoryLabel}>Previous prompt</Text>
+                      <Text style={styles.promptHistoryText}>{item.promptText}</Text>
+                    </ScrollView>
+                  )
+                }
+              />
+            ) : (
+              <ScrollView
+                ref={scrollViewRef}
+                style={styles.transcriptionScroll}
+                contentContainerStyle={styles.transcriptionContent}
+                onContentSizeChange={() => scrollViewRef.current?.scrollToEnd({ animated: true })}
+              >
+                <Animated.View style={animatedTranscriptSendStyle}>
+                  {displayedTranscript ? (
+                    <Text style={styles.transcriptionText}>{displayedTranscript}</Text>
+                  ) : isSending ? null : (
+                    <Text style={styles.placeholderText}>Your transcription will appear here…</Text>
+                  )}
+                </Animated.View>
+              </ScrollView>
+            )}
 
             <Animated.View
               style={[styles.waveformBoxesRow, animatedWaveformRowStyle]}
@@ -4784,7 +4920,22 @@ const styles = StyleSheet.create({
     right: 10,
     zIndex: 4,
     flexDirection: "row",
+    alignItems: "flex-start",
     justifyContent: "space-between",
+  },
+  promptHistoryLabel: {
+    color: "#6B7A99",
+    fontSize: 13,
+    fontWeight: "700",
+    letterSpacing: 0.6,
+    textTransform: "uppercase",
+    marginBottom: 8,
+  },
+  promptHistoryText: {
+    fontSize: 24,
+    fontWeight: "500",
+    lineHeight: 34,
+    color: "#8B96AD",
   },
   modelErrorBadge: {
     alignSelf: "flex-start",
