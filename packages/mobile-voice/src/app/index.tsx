@@ -1813,6 +1813,13 @@ export default function DictationScreen() {
           }
         },
       )
+
+      // Safety timeout: if the Reanimated animation callback never fires (e.g. app
+      // backgrounded during the 320ms animation), force-reset isSending so the user
+      // isn't permanently blocked from sending new prompts.
+      setTimeout(() => {
+        completeSend()
+      }, 5_000)
     } catch {
       setMonitorStatus("Failed to send prompt")
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {})
@@ -2153,6 +2160,11 @@ export default function DictationScreen() {
         translateY: interpolate(waveformVisibility.value, [0, 1], [6, 0], Extrapolation.CLAMP),
       },
     ],
+  }))
+
+  // Inverse of waveform: visible when waveform is hidden, fades out when waveform appears
+  const animatedSwipeHintStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(waveformVisibility.value, [0, 1], [1, 0], Extrapolation.CLAMP),
   }))
 
   const maxDropdownListHeight = DROPDOWN_VISIBLE_ROWS * DROPDOWN_ROW_HEIGHT
@@ -3437,7 +3449,7 @@ export default function DictationScreen() {
                         <ScrollView
                           ref={scrollViewRef}
                           style={{ width: pagerPageWidth }}
-                          contentContainerStyle={styles.transcriptionContent}
+                          contentContainerStyle={[styles.transcriptionContent, styles.transcriptionContentLive]}
                           onContentSizeChange={() => scrollViewRef.current?.scrollToEnd({ animated: true })}
                         >
                           <Animated.View style={animatedTranscriptSendStyle}>
@@ -3446,6 +3458,14 @@ export default function DictationScreen() {
                             ) : isSending ? null : (
                               <Text style={styles.placeholderText}>Your transcription will appear here…</Text>
                             )}
+                          </Animated.View>
+                          <Animated.View style={[styles.swipeHint, animatedSwipeHintStyle]} pointerEvents="none">
+                            {!displayedTranscript && !isSending ? (
+                              <>
+                                <Text style={styles.swipeHintText}>Swipe left to see previous prompts</Text>
+                                <Text style={styles.swipeHintArrow}>→</Text>
+                              </>
+                            ) : null}
                           </Animated.View>
                         </ScrollView>
                       ) : (
@@ -3595,7 +3615,7 @@ export default function DictationScreen() {
                     <ScrollView
                       ref={scrollViewRef}
                       style={{ width: pagerPageWidth }}
-                      contentContainerStyle={styles.transcriptionContent}
+                      contentContainerStyle={[styles.transcriptionContent, styles.transcriptionContentLive]}
                       onContentSizeChange={() => scrollViewRef.current?.scrollToEnd({ animated: true })}
                     >
                       <Animated.View style={animatedTranscriptSendStyle}>
@@ -3604,6 +3624,14 @@ export default function DictationScreen() {
                         ) : isSending ? null : (
                           <Text style={styles.placeholderText}>Your transcription will appear here…</Text>
                         )}
+                      </Animated.View>
+                      <Animated.View style={[styles.swipeHint, animatedSwipeHintStyle]} pointerEvents="none">
+                        {!displayedTranscript && !isSending ? (
+                          <>
+                            <Text style={styles.swipeHintText}>Swipe left to see previous prompts</Text>
+                            <Text style={styles.swipeHintArrow}>→</Text>
+                          </>
+                        ) : null}
                       </Animated.View>
                     </ScrollView>
                   ) : (
@@ -4924,7 +4952,7 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
   },
   promptHistoryLabel: {
-    color: "#6B7A99",
+    color: "#555",
     fontSize: 13,
     fontWeight: "700",
     letterSpacing: 0.6,
@@ -4935,7 +4963,7 @@ const styles = StyleSheet.create({
     fontSize: 24,
     fontWeight: "500",
     lineHeight: 34,
-    color: "#8B96AD",
+    color: "#888",
   },
   modelErrorBadge: {
     alignSelf: "flex-start",
@@ -4965,6 +4993,25 @@ const styles = StyleSheet.create({
     fontSize: 28,
     fontWeight: "500",
     color: "#333",
+  },
+  transcriptionContentLive: {
+    justifyContent: "space-between",
+  },
+  swipeHint: {
+    flexDirection: "row",
+    alignItems: "center",
+    alignSelf: "flex-end",
+    gap: 6,
+  },
+  swipeHintText: {
+    color: "#444",
+    fontSize: 13,
+    fontWeight: "500",
+  },
+  swipeHintArrow: {
+    color: "#444",
+    fontSize: 15,
+    fontWeight: "600",
   },
   waveformBoxesRow: {
     position: "absolute",

@@ -134,7 +134,11 @@ export function useMonitoring({
   const [appState, setAppState] = useState<AppStateStatus>(AppState.currentState)
 
   const foregroundMonitorAbortRef = useRef<AbortController | null>(null)
+  const foregroundPollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const monitorJobRef = useRef<MonitorJob | null>(null)
+  const syncSessionStateRef = useRef<
+    ((input: { serverID: string; sessionID: string; preserveStatusLabel?: boolean }) => Promise<void>) | null
+  >(null)
   const pendingNotificationEventsRef = useRef<{ payload: NotificationPayload; source: "received" | "response" }[]>([])
   const notificationHandlerRef = useRef<(payload: NotificationPayload, source: "received" | "response") => void>(
     (payload, source) => {
@@ -239,6 +243,10 @@ export function useMonitoring({
     if (aborter) {
       aborter.abort()
       foregroundMonitorAbortRef.current = null
+    }
+    if (foregroundPollIntervalRef.current) {
+      clearInterval(foregroundPollIntervalRef.current)
+      foregroundPollIntervalRef.current = null
     }
   }, [])
 
@@ -378,52 +386,89 @@ export function useMonitoring({
 
       const base = job.opencodeBaseURL.replace(/\/+$/, "")
 
-      void (async () => {
-        try {
-          const response = await expoFetch(`${base}/event`, {
-            signal: abortController.signal,
-            headers: {
-              Accept: "text/event-stream",
-              "Cache-Control": "no-cache",
-            },
-          })
+      // SSE stream with automatic recovery on failure or natural close
+      const connectSSE = () => {
+        void (async () => {
+          try {
+            const response = await expoFetch(`${base}/event`, {
+              signal: abortController.signal,
+              headers: {
+                Accept: "text/event-stream",
+                "Cache-Control": "no-cache",
+              },
+            })
 
-          if (!response.ok || !response.body) {
-            throw new Error(`SSE monitor failed (${response.status})`)
-          }
-
-          for await (const message of parseSSEStream(response.body)) {
-            let parsed: OpenCodeEvent | null = null
-            try {
-              parsed = JSON.parse(message.data) as OpenCodeEvent
-            } catch {
-              continue
+            if (!response.ok || !response.body) {
+              throw new Error(`SSE monitor failed (${response.status})`)
             }
 
-            if (!parsed) continue
-            const sessionID = extractSessionID(parsed)
-            if (sessionID !== job.sessionID) continue
-
-            if (parsed.type === "permission.asked") {
-              const request = parsePendingPermissionRequest(parsed.properties)
-              if (request) {
-                upsertPendingPermission(request)
+            for await (const message of parseSSEStream(response.body)) {
+              let parsed: OpenCodeEvent | null = null
+              try {
+                parsed = JSON.parse(message.data) as OpenCodeEvent
+              } catch {
+                continue
               }
+
+              if (!parsed) continue
+              const sessionID = extractSessionID(parsed)
+              if (sessionID !== job.sessionID) continue
+
+              if (parsed.type === "permission.asked") {
+                const request = parsePendingPermissionRequest(parsed.properties)
+                if (request) {
+                  upsertPendingPermission(request)
+                }
+              }
+
+              const eventType = classifyMonitorEvent(parsed)
+              if (!eventType) continue
+
+              const active = monitorJobRef.current
+              if (!active || active.id !== job.id) return
+              handleMonitorEvent(eventType, job)
             }
 
-            const eventType = classifyMonitorEvent(parsed)
-            if (!eventType) continue
-
-            const active = monitorJobRef.current
-            if (!active || active.id !== job.id) return
-            handleMonitorEvent(eventType, job)
+            // Stream ended naturally (server closed connection) -- fall through to recovery
+          } catch {
+            if (abortController.signal.aborted) return
+            // SSE failed (network drop, server restart, etc.) -- fall through to recovery
           }
-        } catch {
+
+          // Recovery: if this job is still active and we weren't explicitly aborted, poll session status
           if (abortController.signal.aborted) return
+          const active = monitorJobRef.current
+          if (!active || active.id !== job.id) return
+
+          const serverID = activeServerIdRef.current
+          const sessionID = activeSessionIdRef.current
+          if (serverID && sessionID) {
+            void syncSessionStateRef.current?.({ serverID, sessionID })
+          }
+        })()
+      }
+
+      connectSSE()
+
+      // Periodic polling fallback: check session status every 20s in case SSE silently drops
+      foregroundPollIntervalRef.current = setInterval(() => {
+        const active = monitorJobRef.current
+        if (!active || active.id !== job.id) {
+          if (foregroundPollIntervalRef.current) {
+            clearInterval(foregroundPollIntervalRef.current)
+            foregroundPollIntervalRef.current = null
+          }
+          return
         }
-      })()
+
+        const serverID = activeServerIdRef.current
+        const sessionID = activeSessionIdRef.current
+        if (serverID && sessionID) {
+          void syncSessionStateRef.current?.({ serverID, sessionID, preserveStatusLabel: true })
+        }
+      }, 20_000)
     },
-    [handleMonitorEvent, stopForegroundMonitor, upsertPendingPermission],
+    [activeServerIdRef, activeSessionIdRef, handleMonitorEvent, stopForegroundMonitor, upsertPendingPermission],
   )
 
   const beginMonitoring = useCallback(
@@ -518,9 +563,24 @@ export function useMonitoring({
         if (!input.preserveStatusLabel) {
           setMonitorStatus("")
         }
+        return
+      }
+
+      // runtimeStatus is null (fetch failed or unparseable) -- retry after a short delay
+      // if a monitor job is still active, so we don't leave the user stuck
+      if (runtimeStatus === null && monitorJobRef.current) {
+        setTimeout(() => {
+          const serverID = activeServerIdRef.current
+          const sessionID = activeSessionIdRef.current
+          if (serverID && sessionID && monitorJobRef.current) {
+            void syncSessionStateRef.current?.({ serverID, sessionID })
+          }
+        }, 5_000)
       }
     },
     [
+      activeServerIdRef,
+      activeSessionIdRef,
       appState,
       fetchSessionRuntimeStatus,
       loadLatestAssistantResponse,
@@ -531,6 +591,10 @@ export function useMonitoring({
       stopForegroundMonitor,
     ],
   )
+
+  useEffect(() => {
+    syncSessionStateRef.current = syncSessionState
+  }, [syncSessionState])
 
   const handleNotificationPayload = useCallback(
     async (payload: NotificationPayload, source: "received" | "response") => {

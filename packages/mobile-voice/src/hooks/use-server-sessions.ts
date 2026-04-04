@@ -170,7 +170,7 @@ export function useServerSessions() {
         return
       }
 
-      const resolvedSessionsURL = `${activeBase}/experimental/session?limit=100`
+      const resolvedSessionsURL = `${activeBase}/experimental/session?limit=100&roots=true`
       const sessionsRes = await fetch(resolvedSessionsURL)
       if (!current()) {
         console.log("[Server] refresh:stale-skip", { id: server.id, req })
