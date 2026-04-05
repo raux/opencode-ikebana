@@ -1,16 +1,17 @@
 import { Tool } from "./tool"
 import DESCRIPTION from "./task.txt"
 import z from "zod"
-import { Session } from "../session"
-import { SessionID, MessageID } from "../session/schema"
-import { MessageV2 } from "../session/message-v2"
-import { Identifier } from "../id/id"
-import { Agent } from "../agent/agent"
-import { SessionPrompt } from "../session/prompt"
-import { iife } from "@/util/iife"
-import { defer } from "@/util/defer"
+import { Effect } from "effect"
 import { Config } from "../config/config"
+import { Session } from "../session"
+import { SessionPrompt } from "../session/prompt"
+import { MessageV2 } from "../session/message-v2"
+import { Agent } from "../agent/agent"
+import type { SessionID } from "../session/schema"
+import { MessageID, SessionID as SessionRef } from "../session/schema"
+import { defer } from "@/util/defer"
 import { Permission } from "@/permission"
+import { output, run } from "./subtask"
 
 const parameters = z.object({
   description: z.string().describe("A short (3-5 words) description of the task"),
@@ -45,8 +46,6 @@ export const TaskTool = Tool.define("task", async (ctx) => {
     description,
     parameters,
     async execute(params: z.infer<typeof parameters>, ctx) {
-      const config = await Config.get()
-
       // Skip permission check when user explicitly invoked via @ or command subtask
       if (!ctx.extra?.bypassAgentCheck) {
         await ctx.ask({
@@ -62,104 +61,58 @@ export const TaskTool = Tool.define("task", async (ctx) => {
 
       const agent = await Agent.get(params.subagent_type)
       if (!agent) throw new Error(`Unknown agent type: ${params.subagent_type} is not a valid agent type`)
-
-      const hasTaskPermission = agent.permission.some((rule) => rule.permission === "task")
-      const hasTodoWritePermission = agent.permission.some((rule) => rule.permission === "todowrite")
-
-      const session = await iife(async () => {
-        if (params.task_id) {
-          const found = await Session.get(SessionID.make(params.task_id)).catch(() => {})
-          if (found) return found
-        }
-
-        return await Session.create({
-          parentID: ctx.sessionID,
-          title: params.description + ` (@${agent.name} subagent)`,
-          permission: [
-            ...(hasTodoWritePermission
-              ? []
-              : [
-                  {
-                    permission: "todowrite" as const,
-                    pattern: "*" as const,
-                    action: "deny" as const,
-                  },
-                ]),
-            ...(hasTaskPermission
-              ? []
-              : [
-                  {
-                    permission: "task" as const,
-                    pattern: "*" as const,
-                    action: "deny" as const,
-                  },
-                ]),
-            ...(config.experimental?.primary_tools?.map((t) => ({
-              pattern: "*",
-              action: "allow" as const,
-              permission: t,
-            })) ?? []),
-          ],
-        })
-      })
       const msg = await MessageV2.get({ sessionID: ctx.sessionID, messageID: ctx.messageID })
       if (msg.info.role !== "assistant") throw new Error("Not an assistant message")
 
-      const model = agent.model ?? {
-        modelID: msg.info.modelID,
-        providerID: msg.info.providerID,
-      }
-
-      ctx.metadata({
-        title: params.description,
-        metadata: {
-          sessionId: session.id,
-          model,
-        },
-      })
-
-      const messageID = MessageID.ascending()
-
-      function cancel() {
-        SessionPrompt.cancel(session.id)
+      let child: SessionID | undefined
+      const cancel = () => {
+        if (!child) return
+        SessionPrompt.cancel(child)
       }
       ctx.abort.addEventListener("abort", cancel)
       using _ = defer(() => ctx.abort.removeEventListener("abort", cancel))
-      const promptParts = await SessionPrompt.resolvePromptParts(params.prompt)
 
-      const result = await SessionPrompt.prompt({
-        messageID,
-        sessionID: session.id,
-        model: {
-          modelID: model.modelID,
-          providerID: model.providerID,
-        },
-        agent: agent.name,
-        tools: {
-          ...(hasTodoWritePermission ? {} : { todowrite: false }),
-          ...(hasTaskPermission ? {} : { task: false }),
-          ...Object.fromEntries((config.experimental?.primary_tools ?? []).map((t) => [t, false])),
-        },
-        parts: promptParts,
-      })
-
-      const text = result.parts.findLast((x) => x.type === "text")?.text ?? ""
-
-      const output = [
-        `task_id: ${session.id} (for resuming to continue this task if needed)`,
-        "",
-        "<task_result>",
-        text,
-        "</task_result>",
-      ].join("\n")
+      const task = await Effect.runPromise(
+        run(
+          {
+            cfg: Effect.promise(() => Config.get()),
+            get: (taskID) => Effect.promise(() => Session.get(SessionRef.make(taskID)).catch(() => undefined)),
+            create: (input) => Effect.promise(() => Session.create(input)),
+            resolve: (prompt) => Effect.promise(() => SessionPrompt.resolvePromptParts(prompt)),
+            prompt: (input) =>
+              Effect.promise(() => SessionPrompt.prompt({ ...input, messageID: MessageID.ascending() })),
+          },
+          {
+            parentID: ctx.sessionID,
+            taskID: params.task_id,
+            description: params.description,
+            prompt: params.prompt,
+            agent,
+            model: {
+              modelID: msg.info.modelID,
+              providerID: msg.info.providerID,
+            },
+            start(sessionID, model) {
+              child = sessionID
+              ctx.metadata({
+                title: params.description,
+                metadata: {
+                  sessionId: sessionID,
+                  model,
+                },
+              })
+            },
+          },
+        ),
+      )
 
       return {
         title: params.description,
         metadata: {
-          sessionId: session.id,
-          model,
+          sessionId: task.sessionID,
+          model: task.model,
         },
-        output,
+        output: output(task.sessionID, task.text),
       }
     },
   }

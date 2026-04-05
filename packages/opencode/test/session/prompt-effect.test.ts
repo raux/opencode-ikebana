@@ -1,8 +1,7 @@
 import { NodeFileSystem } from "@effect/platform-node"
-import { expect, spyOn } from "bun:test"
+import { expect } from "bun:test"
 import { Cause, Effect, Exit, Fiber, Layer } from "effect"
 import path from "path"
-import z from "zod"
 import { Agent as AgentSvc } from "../../src/agent/agent"
 import { Bus } from "../../src/bus"
 import { Command } from "../../src/command"
@@ -29,7 +28,6 @@ import { MessageID, PartID, SessionID } from "../../src/session/schema"
 import { SessionStatus } from "../../src/session/status"
 import { Shell } from "../../src/shell/shell"
 import { Snapshot } from "../../src/snapshot"
-import { TaskTool } from "../../src/tool/task"
 import { ToolRegistry } from "../../src/tool/registry"
 import { Truncate } from "../../src/tool/truncate"
 import { Log } from "../../src/util/log"
@@ -629,41 +627,26 @@ it.live(
     provideTmpdirInstance(
       (dir) =>
         Effect.gen(function* () {
-          const ready = defer<void>()
-          const aborted = defer<void>()
-          const init = spyOn(TaskTool, "init").mockImplementation(async () => ({
-            description: "task",
-            parameters: z.object({
-              description: z.string(),
-              prompt: z.string(),
-              subagent_type: z.string(),
-              task_id: z.string().optional(),
-              command: z.string().optional(),
-            }),
-            execute: async (_args, ctx) => {
-              ready.resolve()
-              ctx.abort.addEventListener("abort", () => aborted.resolve(), { once: true })
-              await new Promise<void>(() => {})
-              return {
-                title: "",
-                metadata: {
-                  sessionId: SessionID.make("task"),
-                  model: ref,
-                },
-                output: "",
-              }
-            },
-          }))
-          yield* Effect.addFinalizer(() => Effect.sync(() => init.mockRestore()))
-
-          const { prompt, chat } = yield* boot()
+          const { prompt, chat, sessions } = yield* boot()
+          const llm = yield* TestLLMServer
+          yield* llm.hang
           const msg = yield* user(chat.id, "hello")
           yield* addSubtask(chat.id, msg.id)
 
           const fiber = yield* prompt.loop({ sessionID: chat.id }).pipe(Effect.forkChild)
-          yield* Effect.promise(() => ready.promise)
+
+          yield* Effect.gen(function* () {
+            while (true) {
+              const [child] = yield* sessions.children(chat.id)
+              if (child) {
+                const msgs = yield* sessions.messages({ sessionID: child.id })
+                if (msgs.some((msg) => msg.info.role === "assistant")) return
+              }
+              yield* Effect.sleep("10 millis")
+            }
+          })
+
           yield* prompt.cancel(chat.id)
-          yield* Effect.promise(() => aborted.promise)
 
           const exit = yield* Fiber.await(fiber)
           expect(Exit.isSuccess(exit)).toBe(true)

@@ -11,7 +11,9 @@ type Options = {
   kind?: Kind
 }
 
-export async function assertExternalDirectory(ctx: Tool.Context, target?: string, options?: Options) {
+type Ctx = Pick<Tool.Context, "ask">
+
+export async function assertExternalDirectory(ctx: Ctx, target?: string, options?: Options) {
   if (!target) return
 
   if (options?.bypass) return
@@ -38,7 +40,7 @@ export async function assertExternalDirectory(ctx: Tool.Context, target?: string
 }
 
 export const assertExternalDirectoryEffect = Effect.fn("Tool.assertExternalDirectory")(function* (
-  ctx: Tool.Context,
+  ctx: Ctx,
   target?: string,
   options?: Options,
 ) {

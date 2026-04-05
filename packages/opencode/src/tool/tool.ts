@@ -26,6 +26,20 @@ export namespace Tool {
     metadata(input: { title?: string; metadata?: M }): void
     ask(input: Omit<Permission.Request, "id" | "sessionID" | "tool">): Promise<void>
   }
+
+  export function context<M extends Metadata = Metadata>(
+    input: Omit<Context<M>, "abort" | "callID"> & {
+      abort?: AbortSignal
+      callID?: string
+    },
+  ): Context<M> {
+    return {
+      ...input,
+      abort: input.abort ?? new AbortController().signal,
+      callID: input.callID,
+    }
+  }
+
   export interface Def<Parameters extends z.ZodType = z.ZodType, M extends Metadata = Metadata> {
     description: string
     parameters: Parameters
