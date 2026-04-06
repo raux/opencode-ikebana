@@ -133,7 +133,7 @@ export namespace Pty {
       }
 
       const state = yield* InstanceState.make<State>(
-        Effect.fn("Pty.state")(function* (ctx) {
+        Effect.fnUntraced(function* (ctx) {
           const state = {
             dir: ctx.directory,
             sessions: new Map<PtyID, Active>(),

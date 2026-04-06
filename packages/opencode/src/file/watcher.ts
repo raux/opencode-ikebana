@@ -73,7 +73,7 @@ export namespace FileWatcher {
       const config = yield* Config.Service
 
       const state = yield* InstanceState.make(
-        Effect.fn("FileWatcher.state")(
+        Effect.fnUntraced(
           function* () {
             if (yield* Flag.OPENCODE_EXPERIMENTAL_DISABLE_FILEWATCHER) return
 

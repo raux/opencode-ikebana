@@ -144,7 +144,7 @@ export namespace ShareNext {
       }
 
       const state: InstanceState<State> = yield* InstanceState.make<State>(
-        Effect.fn("ShareNext.state")(function* (_ctx) {
+        Effect.fnUntraced(function* (_ctx) {
           const cache: State = { queue: new Map(), scope: yield* Scope.make() }
 
           yield* Effect.addFinalizer(() =>

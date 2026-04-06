@@ -197,7 +197,7 @@ export namespace Skill {
       const bus = yield* Bus.Service
       const fsys = yield* AppFileSystem.Service
       const state = yield* InstanceState.make(
-        Effect.fn("Skill.state")(function* (ctx) {
+        Effect.fnUntraced(function* (ctx) {
           const s: State = { skills: {}, dirs: new Set() }
           yield* loadSkills(s, config, discovery, bus, fsys, ctx.directory, ctx.worktree)
           return s

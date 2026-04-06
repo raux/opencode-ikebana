@@ -1475,7 +1475,7 @@ export namespace Config {
         })
 
         const state = yield* InstanceState.make<State>(
-          Effect.fn("Config.state")(function* (ctx) {
+          Effect.fnUntraced(function* (ctx) {
             return yield* loadInstanceState(ctx)
           }),
         )

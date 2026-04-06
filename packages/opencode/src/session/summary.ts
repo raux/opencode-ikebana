@@ -99,8 +99,8 @@ export namespace SessionSummary {
             if (part.type === "step-finish" && part.snapshot) to = part.snapshot
           }
         }
-        if (from && to) return yield* snapshot.diffFull(from, to)
-        return []
+        if (!from || !to || from === to) return []
+        return yield* snapshot.diffFull(from, to)
       })
 
       const summarize = Effect.fn("SessionSummary.summarize")(function* (input: {

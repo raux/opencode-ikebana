@@ -1,4 +1,3 @@
-import { NodeFileSystem, NodePath } from "@effect/platform-node"
 import { Cause, Duration, Effect, Layer, Schedule, Semaphore, ServiceMap, Stream } from "effect"
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process"
 import path from "path"
@@ -82,7 +81,7 @@ export namespace Snapshot {
       }
 
       const state = yield* InstanceState.make<State>(
-        Effect.fn("Snapshot.state")(function* (ctx) {
+        Effect.fnUntraced(function* (ctx) {
           const state = {
             directory: ctx.directory,
             worktree: ctx.worktree,
@@ -150,7 +149,7 @@ export namespace Snapshot {
             yield* fs.writeFileString(target, text ? `${text}\n` : "").pipe(Effect.orDie)
           })
 
-          const add = Effect.fnUntraced(function* () {
+          const add = Effect.fn("Snapshot.add")(function* () {
             yield* sync()
             const [diff, other] = yield* Effect.all(
               [
@@ -203,7 +202,7 @@ export namespace Snapshot {
             }
           })
 
-          const cleanup = Effect.fnUntraced(function* () {
+          const cleanup = Effect.fn("Snapshot.cleanup")(function* () {
             return yield* locked(
               Effect.gen(function* () {
                 if (!(yield* enabled())) return
@@ -221,7 +220,7 @@ export namespace Snapshot {
             )
           })
 
-          const track = Effect.fnUntraced(function* () {
+          const track = Effect.fn("Snapshot.track")(function* () {
             return yield* locked(
               Effect.gen(function* () {
                 if (!(yield* enabled())) return
@@ -238,7 +237,9 @@ export namespace Snapshot {
                   log.info("initialized")
                 }
                 yield* add()
-                const result = yield* git(args(["write-tree"]), { cwd: state.directory })
+                const result = yield* git(args(["write-tree"]), { cwd: state.directory }).pipe(
+                  Effect.withSpan("Snapshot.writeTree"),
+                )
                 const hash = result.text.trim()
                 log.info("tracking", { hash, cwd: state.directory, git: state.gitdir })
                 return hash
@@ -246,7 +247,7 @@ export namespace Snapshot {
             )
           })
 
-          const patch = Effect.fnUntraced(function* (hash: string) {
+          const patch = Effect.fn("Snapshot.patch")(function* (hash: string) {
             return yield* locked(
               Effect.gen(function* () {
                 yield* add()
@@ -273,7 +274,7 @@ export namespace Snapshot {
             )
           })
 
-          const restore = Effect.fnUntraced(function* (snapshot: string) {
+          const restore = Effect.fn("Snapshot.restore")(function* (snapshot: string) {
             return yield* locked(
               Effect.gen(function* () {
                 log.info("restore", { commit: snapshot })
@@ -299,7 +300,7 @@ export namespace Snapshot {
             )
           })
 
-          const revert = Effect.fnUntraced(function* (patches: Snapshot.Patch[]) {
+          const revert = Effect.fn("Snapshot.revert")(function* (patches: Snapshot.Patch[]) {
             return yield* locked(
               Effect.gen(function* () {
                 const ops: { hash: string; file: string; rel: string }[] = []
@@ -414,7 +415,7 @@ export namespace Snapshot {
             )
           })
 
-          const diff = Effect.fnUntraced(function* (hash: string) {
+          const diff = Effect.fn("Snapshot.diff")(function* (hash: string) {
             return yield* locked(
               Effect.gen(function* () {
                 yield* add()
@@ -434,7 +435,7 @@ export namespace Snapshot {
             )
           })
 
-          const diffFull = Effect.fnUntraced(function* (from: string, to: string) {
+          const diffFull = Effect.fn("Snapshot.diffFull")(function* (from: string, to: string) {
             return yield* locked(
               Effect.gen(function* () {
                 type Row = {
@@ -451,7 +452,7 @@ export namespace Snapshot {
                   ref: string
                 }
 
-                const show = Effect.fnUntraced(function* (row: Row) {
+                const show = Effect.fn("Snapshot.show")(function* (row: Row) {
                   if (row.binary) return ["", ""]
                   if (row.status === "added") {
                     return [
@@ -478,7 +479,7 @@ export namespace Snapshot {
                   )
                 })
 
-                const load = Effect.fnUntraced(
+                const load = Effect.fn("Snapshot.load")(
                   function* (rows: Row[]) {
                     const refs = rows.flatMap((row) => {
                       if (row.binary) return []
@@ -583,7 +584,7 @@ export namespace Snapshot {
                 const statuses = yield* git(
                   [...quote, ...args(["diff", "--no-ext-diff", "--name-status", "--no-renames", from, to, "--", "."])],
                   { cwd: state.directory },
-                )
+                ).pipe(Effect.withSpan("Snapshot.diffStatus"))
 
                 for (const line of statuses.text.trim().split("\n")) {
                   if (!line) continue
@@ -597,7 +598,7 @@ export namespace Snapshot {
                   {
                     cwd: state.directory,
                   },
-                )
+                ).pipe(Effect.withSpan("Snapshot.diffNumstat"))
 
                 const rows = numstat.text
                   .trim()
@@ -660,30 +661,14 @@ export namespace Snapshot {
       )
 
       return Service.of({
-        init: Effect.fn("Snapshot.init")(function* () {
-          yield* InstanceState.get(state)
-        }),
-        cleanup: Effect.fn("Snapshot.cleanup")(function* () {
-          return yield* InstanceState.useEffect(state, (s) => s.cleanup())
-        }),
-        track: Effect.fn("Snapshot.track")(function* () {
-          return yield* InstanceState.useEffect(state, (s) => s.track())
-        }),
-        patch: Effect.fn("Snapshot.patch")(function* (hash: string) {
-          return yield* InstanceState.useEffect(state, (s) => s.patch(hash))
-        }),
-        restore: Effect.fn("Snapshot.restore")(function* (snapshot: string) {
-          return yield* InstanceState.useEffect(state, (s) => s.restore(snapshot))
-        }),
-        revert: Effect.fn("Snapshot.revert")(function* (patches: Snapshot.Patch[]) {
-          return yield* InstanceState.useEffect(state, (s) => s.revert(patches))
-        }),
-        diff: Effect.fn("Snapshot.diff")(function* (hash: string) {
-          return yield* InstanceState.useEffect(state, (s) => s.diff(hash))
-        }),
-        diffFull: Effect.fn("Snapshot.diffFull")(function* (from: string, to: string) {
-          return yield* InstanceState.useEffect(state, (s) => s.diffFull(from, to))
-        }),
+        init: () => InstanceState.get(state).pipe(Effect.asVoid),
+        cleanup: () => InstanceState.useEffect(state, (s) => s.cleanup()),
+        track: () => InstanceState.useEffect(state, (s) => s.track()),
+        patch: (hash: string) => InstanceState.useEffect(state, (s) => s.patch(hash)),
+        restore: (snapshot: string) => InstanceState.useEffect(state, (s) => s.restore(snapshot)),
+        revert: (patches: Snapshot.Patch[]) => InstanceState.useEffect(state, (s) => s.revert(patches)),
+        diff: (hash: string) => InstanceState.useEffect(state, (s) => s.diff(hash)),
+        diffFull: (from: string, to: string) => InstanceState.useEffect(state, (s) => s.diffFull(from, to)),
       })
     }),
   )

@@ -117,7 +117,7 @@ export namespace ProviderAuth {
       const auth = yield* Auth.Service
       const plugin = yield* Plugin.Service
       const state = yield* InstanceState.make<State>(
-        Effect.fn("ProviderAuth.state")(function* () {
+        Effect.fnUntraced(function* () {
           const plugins = yield* plugin.list()
           return {
             hooks: Record.fromEntries(

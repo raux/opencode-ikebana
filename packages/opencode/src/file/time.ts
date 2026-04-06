@@ -54,12 +54,12 @@ export namespace FileTime {
         }
       })
       const state = yield* InstanceState.make<State>(
-        Effect.fn("FileTime.state")(() =>
-          Effect.succeed({
+        Effect.fnUntraced(function* () {
+          return {
             reads: new Map<SessionID, Map<string, Stamp>>(),
             locks: new Map<string, Semaphore.Semaphore>(),
-          }),
-        ),
+          }
+        }),
       )
 
       const getLock = Effect.fn("FileTime.lock")(function* (filepath: string) {

@@ -478,7 +478,7 @@ export namespace MCP {
       }
 
       const state = yield* InstanceState.make<State>(
-        Effect.fn("MCP.state")(function* () {
+        Effect.fnUntraced(function* () {
           const cfg = yield* cfgSvc.get()
           const config = cfg.mcp ?? {}
           const s: State = {

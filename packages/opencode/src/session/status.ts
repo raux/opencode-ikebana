@@ -58,7 +58,9 @@ export namespace SessionStatus {
       const bus = yield* Bus.Service
 
       const state = yield* InstanceState.make(
-        Effect.fn("SessionStatus.state")(() => Effect.succeed(new Map<SessionID, Info>())),
+        Effect.fnUntraced(function* () {
+          return new Map<SessionID, Info>()
+        }),
       )
 
       const get = Effect.fn("SessionStatus.get")(function* (sessionID: SessionID) {

@@ -142,7 +142,7 @@ export namespace Permission {
     Effect.gen(function* () {
       const bus = yield* Bus.Service
       const state = yield* InstanceState.make<State>(
-        Effect.fn("Permission.state")(function* (ctx) {
+        Effect.fnUntraced(function* (ctx) {
           const row = Database.use((db) =>
             db.select().from(PermissionTable).where(eq(PermissionTable.project_id, ctx.project.id)).get(),
           )

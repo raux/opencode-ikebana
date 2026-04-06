@@ -79,7 +79,7 @@ export namespace Command {
       const mcp = yield* MCP.Service
       const skill = yield* Skill.Service
 
-      const init = Effect.fn("Command.state")(function* (ctx) {
+      const init = Effect.fnUntraced(function* (ctx) {
         const cfg = yield* config.get()
         const commands: Record<string, Info> = {}
 

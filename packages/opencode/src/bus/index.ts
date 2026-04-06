@@ -47,7 +47,7 @@ export namespace Bus {
     Service,
     Effect.gen(function* () {
       const state = yield* InstanceState.make<State>(
-        Effect.fn("Bus.state")(function* (ctx) {
+        Effect.fnUntraced(function* (ctx) {
           const wildcard = yield* PubSub.unbounded<Payload>()
           const typed = new Map<string, PubSub.PubSub<Payload>>()
 

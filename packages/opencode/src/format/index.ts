@@ -40,7 +40,7 @@ export namespace Format {
       const spawner = yield* ChildProcessSpawner.ChildProcessSpawner
 
       const state = yield* InstanceState.make(
-        Effect.fn("Format.state")(function* (_ctx) {
+        Effect.fnUntraced(function* (_ctx) {
           const commands: Record<string, string[] | false> = {}
           const formatters: Record<string, Formatter.Info> = {}
 
@@ -84,57 +84,106 @@ export namespace Format {
             return cmd !== false
           }
 
-          async function getFormatter(ext: string) {
-            const matching = Object.values(formatters).filter((item) => item.extensions.includes(ext))
-            const checks = await Promise.all(
-              matching.map(async (item) => {
-                log.info("checking", { name: item.name, ext })
-                const cmd = await getCommand(item)
-                if (cmd) {
-                  log.info("enabled", { name: item.name, ext })
-                }
-                return {
-                  item,
-                  cmd,
-                }
-              }),
-            )
-            return checks.filter((x) => x.cmd).map((x) => ({ item: x.item, cmd: x.cmd! }))
+          function check(item: Formatter.Info, ext: string) {
+            return Effect.gen(function* () {
+              yield* Effect.annotateCurrentSpan({
+                ext,
+                formatter: item.name,
+              })
+              log.info("checking", { name: item.name, ext })
+              const cmd = yield* Effect.promise(() => getCommand(item))
+              if (cmd) {
+                log.info("enabled", { name: item.name, ext })
+              }
+              yield* Effect.annotateCurrentSpan({ enabled: !!cmd })
+              return {
+                item,
+                cmd,
+              }
+            }).pipe(Effect.withSpan("Format.checkFormatter"))
           }
 
-          function formatFile(filepath: string) {
+          function resolve(ext: string) {
+            return Effect.gen(function* () {
+              const matching = Object.values(formatters).filter((item) => item.extensions.includes(ext))
+              const checks = yield* Effect.all(matching.map((item) => check(item, ext)))
+              const enabled = checks.filter((item) => item.cmd).map((item) => ({ item: item.item, cmd: item.cmd! }))
+              yield* Effect.annotateCurrentSpan({
+                ext,
+                matched_formatters: matching.map((item) => item.name).join(",") || "none",
+                enabled_formatters: enabled.map((item) => item.item.name).join(",") || "none",
+              })
+              return {
+                matching,
+                enabled,
+              }
+            }).pipe(Effect.withSpan("Format.resolveFormatters"))
+          }
+
+          function spawn(item: Formatter.Info, command: string[], filepath: string) {
+            return Effect.gen(function* () {
+              const dir = yield* InstanceState.directory
+              yield* Effect.annotateCurrentSpan({
+                file: filepath,
+                formatter: item.name,
+                command: command.join(" "),
+              })
+              return yield* spawner.spawn(
+                ChildProcess.make(command[0]!, command.slice(1), {
+                  cwd: dir,
+                  env: item.environment,
+                  extendEnv: true,
+                }),
+              )
+            }).pipe(Effect.withSpan("Format.spawnFormatter"))
+          }
+
+          function wait(
+            handle: ChildProcessSpawner.ChildProcessHandle,
+            item: Formatter.Info,
+            command: string[],
+            filepath: string,
+          ) {
+            return Effect.gen(function* () {
+              yield* Effect.annotateCurrentSpan({
+                file: filepath,
+                formatter: item.name,
+                command: command.join(" "),
+              })
+              return yield* handle.exitCode
+            }).pipe(Effect.withSpan("Format.waitFormatter"))
+          }
+
+          function formatFile(filepath: string): Effect.Effect<void, never, never> {
             return Effect.gen(function* () {
               log.info("formatting", { file: filepath })
               const ext = path.extname(filepath)
+              yield* Effect.annotateCurrentSpan({ file: filepath, ext })
+              const fmt = yield* resolve(ext)
+              yield* Effect.annotateCurrentSpan({
+                matched_formatters: fmt.matching.map((item) => item.name).join(",") || "none",
+                enabled_formatters: fmt.enabled.map((item) => item.item.name).join(",") || "none",
+              })
 
-              for (const { item, cmd } of yield* Effect.promise(() => getFormatter(ext))) {
+              for (const { item, cmd } of fmt.enabled) {
                 if (cmd === false) continue
                 log.info("running", { command: cmd })
                 const replaced = cmd.map((x) => x.replace("$FILE", filepath))
-                const dir = yield* InstanceState.directory
-                const code = yield* spawner
-                  .spawn(
-                    ChildProcess.make(replaced[0]!, replaced.slice(1), {
-                      cwd: dir,
-                      env: item.environment,
-                      extendEnv: true,
+                const code = yield* spawn(item, replaced, filepath).pipe(
+                  Effect.flatMap((handle) => wait(handle, item, replaced, filepath)),
+                  Effect.scoped,
+                  Effect.catch(() =>
+                    Effect.sync(() => {
+                      log.error("failed to format file", {
+                        error: "spawn failed",
+                        command: replaced,
+                        ...item.environment,
+                        file: filepath,
+                      })
+                      return ChildProcessSpawner.ExitCode(1)
                     }),
-                  )
-                  .pipe(
-                    Effect.flatMap((handle) => handle.exitCode),
-                    Effect.scoped,
-                    Effect.catch(() =>
-                      Effect.sync(() => {
-                        log.error("failed to format file", {
-                          error: "spawn failed",
-                          command: cmd,
-                          ...item.environment,
-                          file: filepath,
-                        })
-                        return ChildProcessSpawner.ExitCode(1)
-                      }),
-                    ),
-                  )
+                  ),
+                )
                 if (code !== 0) {
                   log.error("failed", {
                     command: cmd,

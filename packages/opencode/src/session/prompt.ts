@@ -103,7 +103,7 @@ export namespace SessionPrompt {
       const instruction = yield* Instruction.Service
 
       const state = yield* InstanceState.make(
-        Effect.fn("SessionPrompt.state")(function* () {
+        Effect.fnUntraced(function* () {
           const runners = new Map<string, Runner<MessageV2.WithParts>>()
           yield* Effect.addFinalizer(
             Effect.fnUntraced(function* () {
@@ -1340,12 +1340,15 @@ NOTE: At any point in time through this workflow you should feel free to ask the
           let structured: unknown | undefined
           let step = 0
           const session = yield* sessions.get(sessionID)
+          yield* Effect.annotateCurrentSpan({ sessionID })
 
           while (true) {
             yield* status.set(sessionID, { type: "busy" })
             log.info("loop", { step, sessionID })
 
-            let msgs = yield* MessageV2.filterCompactedEffect(sessionID)
+            let msgs = yield* MessageV2.filterCompactedEffect(sessionID).pipe(
+              Effect.withSpan("SessionPrompt.loadMessages"),
+            )
 
             let lastUser: MessageV2.User | undefined
             let lastAssistant: MessageV2.Assistant | undefined
@@ -1398,13 +1401,20 @@ NOTE: At any point in time through this workflow you should feel free to ask the
             }
 
             if (task?.type === "compaction") {
-              const result = yield* compaction.process({
-                messages: msgs,
-                parentID: lastUser.id,
-                sessionID,
+              yield* Effect.logWarning("session compaction task", {
                 auto: task.auto,
                 overflow: task.overflow,
+                sessionID,
               })
+              const result = yield* compaction
+                .process({
+                  messages: msgs,
+                  parentID: lastUser.id,
+                  sessionID,
+                  auto: task.auto,
+                  overflow: task.overflow,
+                })
+                .pipe(Effect.withSpan("SessionPrompt.compaction"))
               if (result === "stop") break
               continue
             }
@@ -1414,6 +1424,7 @@ NOTE: At any point in time through this workflow you should feel free to ask the
               lastFinished.summary !== true &&
               (yield* compaction.isOverflow({ tokens: lastFinished.tokens, model }))
             ) {
+              yield* Effect.logWarning("session overflow detected", { modelID: model.id, sessionID, step })
               yield* compaction.create({ sessionID, agent: lastUser.agent, model: lastUser.model, auto: true })
               continue
             }
@@ -1429,6 +1440,13 @@ NOTE: At any point in time through this workflow you should feel free to ask the
             const maxSteps = agent.steps ?? Infinity
             const isLastStep = step >= maxSteps
             msgs = yield* insertReminders({ messages: msgs, agent, session })
+            yield* Effect.logInfo("session turn", {
+              agent: agent.name,
+              modelID: model.id,
+              providerID: model.providerID,
+              sessionID,
+              step,
+            })
 
             const msg: MessageV2.Assistant = {
               id: MessageID.ascending(),
@@ -1503,7 +1521,7 @@ NOTE: At any point in time through this workflow you should feel free to ask the
                   Effect.promise(() => SystemPrompt.environment(model)),
                   instruction.system().pipe(Effect.orDie),
                   Effect.promise(() => MessageV2.toModelMessages(msgs, model)),
-                ])
+                ]).pipe(Effect.withSpan("SessionPrompt.buildInput"))
                 const system = [...env, ...(skills ? [skills] : []), ...instructions]
                 const format = lastUser.format ?? { type: "text" as const }
                 if (format.type === "json_schema") system.push(STRUCTURED_OUTPUT_SYSTEM_PROMPT)

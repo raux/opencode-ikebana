@@ -98,7 +98,7 @@ export namespace Plugin {
       const config = yield* Config.Service
 
       const state = yield* InstanceState.make<State>(
-        Effect.fn("Plugin.state")(function* (ctx) {
+        Effect.fnUntraced(function* (ctx) {
           const hooks: Hooks[] = []
 
           const { Server } = yield* Effect.promise(() => import("../server/server"))

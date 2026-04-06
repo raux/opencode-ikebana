@@ -82,7 +82,7 @@ export namespace ToolRegistry {
         Effect.isEffect(tool) ? tool : Effect.succeed(tool)
 
       const state = yield* InstanceState.make<State>(
-        Effect.fn("ToolRegistry.state")(function* (ctx) {
+        Effect.fnUntraced(function* (ctx) {
           const custom: Tool.Info[] = []
 
           function fromPlugin(id: string, def: ToolDefinition): Tool.Info {

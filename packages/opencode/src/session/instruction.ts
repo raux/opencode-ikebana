@@ -75,12 +75,12 @@ export namespace Instruction {
         const http = HttpClient.filterStatusOk(withTransientReadRetry(yield* HttpClient.HttpClient))
 
         const state = yield* InstanceState.make(
-          Effect.fn("Instruction.state")(() =>
-            Effect.succeed({
+          Effect.fnUntraced(function* () {
+            return {
               // Track which instruction files have already been attached for a given assistant message.
               claims: new Map<MessageID, Set<string>>(),
-            }),
-          ),
+            }
+          }),
         )
 
         const relative = Effect.fnUntraced(function* (instruction: string) {

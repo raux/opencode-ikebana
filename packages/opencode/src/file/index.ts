@@ -346,11 +346,11 @@ export namespace File {
       const appFs = yield* AppFileSystem.Service
 
       const state = yield* InstanceState.make<State>(
-        Effect.fn("File.state")(() =>
-          Effect.succeed({
+        Effect.fnUntraced(function* () {
+          return {
             cache: { files: [], dirs: [] } as Entry,
-          }),
-        ),
+          }
+        }),
       )
 
       const scan = Effect.fn("File.scan")(function* () {

@@ -78,7 +78,7 @@ export namespace Agent {
       const provider = yield* Provider.Service
 
       const state = yield* InstanceState.make<State>(
-        Effect.fn("Agent.state")(function* (ctx) {
+        Effect.fnUntraced(function* (ctx) {
           const cfg = yield* config.get()
           const skillDirs = yield* skill.dirs()
           const whitelistedDirs = [Truncate.GLOB, ...skillDirs.map((dir) => path.join(dir, "*"))]

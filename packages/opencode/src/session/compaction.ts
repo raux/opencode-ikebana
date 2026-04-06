@@ -138,7 +138,7 @@ export namespace SessionCompaction {
         }
       })
 
-      const processCompaction = Effect.fn("SessionCompaction.process")(function* (input: {
+      const process = Effect.fn("SessionCompaction.process")(function* (input: {
         parentID: MessageID
         messages: MessageV2.WithParts[]
         sessionID: SessionID
@@ -374,7 +374,7 @@ When constructing the summary, try to stick to this template:
       return Service.of({
         isOverflow,
         prune,
-        process: processCompaction,
+        process,
         create,
       })
     }),

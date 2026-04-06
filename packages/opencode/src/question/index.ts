@@ -111,7 +111,7 @@ export namespace Question {
     Effect.gen(function* () {
       const bus = yield* Bus.Service
       const state = yield* InstanceState.make<State>(
-        Effect.fn("Question.state")(function* () {
+        Effect.fnUntraced(function* () {
           const state = {
             pending: new Map<QuestionID, PendingEntry>(),
           }

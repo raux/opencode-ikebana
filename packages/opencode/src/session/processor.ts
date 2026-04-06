@@ -415,9 +415,20 @@ export namespace SessionProcessor {
 
         const halt = Effect.fn("SessionProcessor.halt")(function* (e: unknown) {
           log.error("process", { error: e, stack: e instanceof Error ? e.stack : undefined })
+          yield* Effect.logError("session processor failed", {
+            agent: ctx.assistantMessage.agent,
+            modelID: ctx.model.id,
+            providerID: ctx.model.providerID,
+            sessionID: ctx.sessionID,
+          })
           const error = parse(e)
           if (MessageV2.ContextOverflowError.isInstance(error)) {
             ctx.needsCompaction = true
+            yield* Effect.logWarning("session processor requested compaction", {
+              modelID: ctx.model.id,
+              providerID: ctx.model.providerID,
+              sessionID: ctx.sessionID,
+            })
             yield* bus.publish(Session.Event.Error, { sessionID: ctx.sessionID, error })
             return
           }
@@ -446,6 +457,18 @@ export namespace SessionProcessor {
           log.info("process")
           ctx.needsCompaction = false
           ctx.shouldBreak = (yield* config.get()).experimental?.continue_loop_on_deny !== true
+          yield* Effect.annotateCurrentSpan({
+            agent: streamInput.agent.name,
+            modelID: streamInput.model.id,
+            providerID: streamInput.model.providerID,
+            sessionID: ctx.sessionID,
+          })
+          yield* Effect.logInfo("session processor started", {
+            agent: streamInput.agent.name,
+            modelID: streamInput.model.id,
+            providerID: streamInput.model.providerID,
+            sessionID: ctx.sessionID,
+          })
 
           return yield* Effect.gen(function* () {
             yield* Effect.gen(function* () {
@@ -459,6 +482,7 @@ export namespace SessionProcessor {
                 Stream.runDrain,
               )
             }).pipe(
+              Effect.withSpan("SessionProcessor.stream"),
               Effect.onInterrupt(() => Effect.sync(() => void (aborted = true))),
               Effect.catchCauseIf(
                 (cause) => !Cause.hasInterruptsOnly(cause),
@@ -483,6 +507,12 @@ export namespace SessionProcessor {
             if (aborted && !ctx.assistantMessage.error) {
               yield* abort()
             }
+            yield* Effect.logInfo("session processor finished", {
+              aborted,
+              blocked: ctx.blocked,
+              compact: ctx.needsCompaction,
+              sessionID: ctx.sessionID,
+            })
             if (ctx.needsCompaction) return "compact"
             if (ctx.blocked || ctx.assistantMessage.error || aborted) return "stop"
             return "continue"

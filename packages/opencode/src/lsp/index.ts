@@ -164,7 +164,7 @@ export namespace LSP {
       const config = yield* Config.Service
 
       const state = yield* InstanceState.make<State>(
-        Effect.fn("LSP.state")(function* () {
+        Effect.fnUntraced(function* () {
           const cfg = yield* config.get()
 
           const servers: Record<string, LSPServer.Info> = {}
