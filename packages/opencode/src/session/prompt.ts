@@ -250,6 +250,9 @@ export namespace SessionPrompt {
           )
       })
 
+      const suggestDebug = (sessionID: SessionID, state: SessionStatus.SuggestState, detail?: string) =>
+        bus.publish(SessionStatus.Event.SuggestDebug, { sessionID, state, detail })
+
       const suggest = Effect.fn("SessionPrompt.suggest")(function* (input: {
         session: Session.Info
         sessionID: SessionID
@@ -272,6 +275,8 @@ export namespace SessionPrompt {
         const ag = yield* agents.get(message.agent ?? "code")
         if (!ag) return
 
+        yield* suggestDebug(input.sessionID, "generating")
+
         // Full message history so the cached KV from the main conversation is reused
         const msgs = yield* MessageV2.filterCompactedEffect(input.sessionID)
         const real = (item: MessageV2.WithParts) =>
@@ -287,7 +292,7 @@ export namespace SessionPrompt {
         const modelMsgs = yield* Effect.promise(() => MessageV2.toModelMessages(msgs, model))
         const system = [...env, ...(skills ? [skills] : []), ...instructions]
 
-        const text = yield* Effect.promise(async (signal) => {
+        const exit = yield* Effect.promise(async (signal) => {
           const result = await LLM.stream({
             agent: ag,
             user,
@@ -303,7 +308,14 @@ export namespace SessionPrompt {
             messages: [...modelMsgs, { role: "user" as const, content: PROMPT_SUGGEST_NEXT }],
           })
           return result.text
-        })
+        }).pipe(Effect.exit)
+
+        if (Exit.isFailure(exit)) {
+          const err = Cause.squash(exit.cause)
+          yield* suggestDebug(input.sessionID, "error", err instanceof Error ? err.message : String(err))
+          return
+        }
+        const text = exit.value
 
         const line = text
           .replace(/<think>[\s\S]*?<\/think>\s*/g, "")
@@ -311,17 +323,24 @@ export namespace SessionPrompt {
           .map((item) => item.trim())
           .find((item) => item.length > 0)
           ?.replace(/^["'`]+|["'`]+$/g, "")
-        if (!line) return
+        if (!line) {
+          yield* suggestDebug(input.sessionID, "refused", "empty response")
+          return
+        }
 
         const tag = line
           .toUpperCase()
           .replace(/[\s-]+/g, "_")
           .replace(/[^A-Z_]/g, "")
-        if (tag === "NO_SUGGESTION") return
+        if (tag === "NO_SUGGESTION") {
+          yield* suggestDebug(input.sessionID, "refused", "NO_SUGGESTION")
+          return
+        }
 
         const suggestion = line.length > 240 ? line.slice(0, 237) + "..." : line
         if ((yield* status.get(input.sessionID)).type !== "idle") return
         yield* status.suggest(input.sessionID, suggestion)
+        yield* suggestDebug(input.sessionID, "done", suggestion)
       })
 
       const insertReminders = Effect.fn("SessionPrompt.insertReminders")(function* (input: {
