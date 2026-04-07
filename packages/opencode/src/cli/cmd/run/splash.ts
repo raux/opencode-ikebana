@@ -207,13 +207,13 @@ function build(input: SplashWriterInput, kind: "entry" | "exit", ctx: Scrollback
     const rightText = logo.right[i] ?? ""
 
     draw(lines, leftText, {
-      left: 2,
+      left: 0,
       top: y,
       fg: left,
       shadow: leftShadow,
     })
     draw(lines, rightText, {
-      left: 2 + leftText.length + 1,
+      left: leftText.length + 1,
       top: y,
       fg: right,
       shadow: rightShadow,
@@ -226,22 +226,22 @@ function build(input: SplashWriterInput, kind: "entry" | "exit", ctx: Scrollback
 
   if (input.showSession !== false) {
     const label = "Session".padEnd(10, " ")
-    push(lines, 2, y, label, input.theme.system.body, undefined, TextAttributes.DIM)
-    push(lines, 2 + label.length, y, meta.title, input.theme.assistant.body, undefined, TextAttributes.BOLD)
+    push(lines, 0, y, label, input.theme.system.body, undefined, TextAttributes.DIM)
+    push(lines, label.length, y, meta.title, input.theme.assistant.body, undefined, TextAttributes.BOLD)
     y += 1
   }
 
   if (kind === "entry") {
-    push(lines, 2, y, "Type /exit or /quit to finish.", input.theme.system.body, undefined, undefined)
+    push(lines, 0, y, "Type /exit or /quit to finish.", input.theme.system.body, undefined, undefined)
     y += 1
   }
 
   if (kind === "exit") {
     const next = "Continue".padEnd(10, " ")
-    push(lines, 2, y, next, input.theme.system.body, undefined, TextAttributes.DIM)
+    push(lines, 0, y, next, input.theme.system.body, undefined, TextAttributes.DIM)
     push(
       lines,
-      2 + next.length,
+      next.length,
       y,
       `opencode -s ${meta.session_id}`,
       input.theme.assistant.body,
