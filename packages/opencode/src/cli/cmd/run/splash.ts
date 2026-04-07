@@ -251,7 +251,7 @@ function build(input: SplashWriterInput, kind: "entry" | "exit", ctx: Scrollback
     y += 1
   }
 
-  const height = Math.max(1, y + 1)
+  const height = Math.max(1, y)
   const root = new BoxRenderable(ctx.renderContext, {
     id: `run-direct-splash-${kind}-${id++}`,
     position: "absolute",
