@@ -19,9 +19,9 @@ import { useSDK } from "@/context/sdk"
 import { useSync } from "@/context/sync"
 import { useComments } from "@/context/comments"
 import { Button } from "@opencode-ai/ui/button"
+import { ButtonShortcut } from "@opencode-ai/ui/button-shortcut"
 import { DockShellForm, DockTray } from "@opencode-ai/ui/dock-surface"
 import { Icon } from "@opencode-ai/ui/icon"
-import { Keybind } from "@opencode-ai/ui/keybind"
 import { ProviderIcon } from "@opencode-ai/ui/provider-icon"
 import { Tooltip, TooltipKeybind } from "@opencode-ai/ui/tooltip"
 import { IconButton } from "@opencode-ai/ui/icon-button"
@@ -1584,20 +1584,19 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                 </div>
               </Show>
               <div class="absolute inset-y-0 right-0 flex items-center" style={shell()}>
-                <Button
+                <ButtonShortcut
                   type="button"
                   variant="ghost"
                   size="small"
+                  shortcut="Esc"
+                  shortcutAria="Escape"
                   class="h-6 gap-2 rounded-[6px] border-none px-0 py-0 pl-3 pr-0.75 text-13-medium text-text-base shadow-none"
                   tabIndex={store.mode === "shell" ? undefined : -1}
                   onClick={() => setMode("normal")}
                   aria-label={language.t("common.cancel")}
                 >
-                  <span>{language.t("common.cancel")}</span>
-                  <Keybind class="h-[18px] rounded-[3px] px-1 !bg-surface-raised-base !text-13-regular !text-text-weak !shadow-none">
-                    {language.t("common.key.esc")}
-                  </Keybind>
-                </Button>
+                  {language.t("common.cancel")}
+                </ButtonShortcut>
               </div>
             </div>
           </div>
