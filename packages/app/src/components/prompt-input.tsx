@@ -21,6 +21,7 @@ import { useComments } from "@/context/comments"
 import { Button } from "@opencode-ai/ui/button"
 import { DockShellForm, DockTray } from "@opencode-ai/ui/dock-surface"
 import { Icon } from "@opencode-ai/ui/icon"
+import { Keybind } from "@opencode-ai/ui/keybind"
 import { ProviderIcon } from "@opencode-ai/ui/provider-icon"
 import { Tooltip, TooltipKeybind } from "@opencode-ai/ui/tooltip"
 import { IconButton } from "@opencode-ai/ui/icon-button"
@@ -1450,42 +1451,41 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       <Show when={store.mode === "normal" || store.mode === "shell"}>
         <DockTray attach="top">
           <div class="px-1.75 pt-5.5 pb-2 flex items-center gap-2 min-w-0">
-            <div class="flex items-center gap-1.5 min-w-0 flex-1 relative">
+            <div class="flex h-7 items-center gap-1.5 min-w-0 flex-1 relative">
               <div
-                class="h-7 flex items-center gap-1.5 max-w-[160px] min-w-0 absolute inset-y-0 left-0"
+                class="flex items-center max-w-[160px] min-w-0 absolute inset-y-0 left-0"
                 style={{
-                  padding: "0 4px 0 8px",
+                  padding: "0 8px",
                   ...shell(),
                 }}
               >
-                <span class="truncate text-13-medium text-text-strong">{language.t("prompt.mode.shell")}</span>
-                <div class="size-4 shrink-0" />
+                <span class="truncate text-13-regular text-text-strong">{language.t("prompt.mode.shell")}</span>
               </div>
-              <div class="flex items-center gap-1.5 min-w-0 flex-1">
-                <div data-component="prompt-agent-control">
-                  <TooltipKeybind
-                    placement="top"
-                    gutter={4}
-                    title={language.t("command.agent.cycle")}
-                    keybind={command.keybind("agent.cycle")}
-                  >
-                    <Select
-                      size="normal"
-                      options={agentNames()}
-                      current={local.agent.current()?.name ?? ""}
-                      onSelect={(value) => {
-                        local.agent.set(value)
-                        restoreFocus()
-                      }}
-                      class="capitalize max-w-[160px] text-text-base"
-                      valueClass="truncate text-13-regular text-text-base"
-                      triggerStyle={control()}
-                      triggerProps={{ "data-action": "prompt-agent" }}
-                      variant="ghost"
-                    />
-                  </TooltipKeybind>
-                </div>
-                <Show when={store.mode !== "shell"}>
+              <Show when={store.mode !== "shell"}>
+                <div class="flex items-center gap-1.5 min-w-0 flex-1">
+                  <div data-component="prompt-agent-control">
+                    <TooltipKeybind
+                      placement="top"
+                      gutter={4}
+                      title={language.t("command.agent.cycle")}
+                      keybind={command.keybind("agent.cycle")}
+                    >
+                      <Select
+                        size="normal"
+                        options={agentNames()}
+                        current={local.agent.current()?.name ?? ""}
+                        onSelect={(value) => {
+                          local.agent.set(value)
+                          restoreFocus()
+                        }}
+                        class="capitalize max-w-[160px] text-text-base"
+                        valueClass="truncate text-13-regular text-text-base"
+                        triggerStyle={control()}
+                        triggerProps={{ "data-action": "prompt-agent" }}
+                        variant="ghost"
+                      />
+                    </TooltipKeybind>
+                  </div>
                   <div data-component="prompt-model-control">
                     <Show
                       when={providers.paid().length > 0}
@@ -1581,7 +1581,23 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                       />
                     </TooltipKeybind>
                   </div>
-                </Show>
+                </div>
+              </Show>
+              <div class="absolute inset-y-0 right-0 flex items-center" style={shell()}>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="small"
+                  class="h-6 gap-2 rounded-[6px] border-none px-0 py-0 pl-3 pr-0.75 text-13-medium text-text-base shadow-none"
+                  tabIndex={store.mode === "shell" ? undefined : -1}
+                  onClick={() => setMode("normal")}
+                  aria-label={language.t("common.cancel")}
+                >
+                  <span>{language.t("common.cancel")}</span>
+                  <Keybind class="h-[18px] rounded-[3px] px-1 !bg-surface-raised-base !text-13-regular !text-text-weak !shadow-none">
+                    {language.t("common.key.esc")}
+                  </Keybind>
+                </Button>
               </div>
             </div>
           </div>
