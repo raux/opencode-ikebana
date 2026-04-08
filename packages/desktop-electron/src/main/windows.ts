@@ -54,7 +54,7 @@ export function setDockIcon() {
   if (!icon.isEmpty()) app.dock?.setIcon(icon)
 }
 
-export function createMainWindow(globals: Globals) {
+export function createMainWindow(globals: Globals, opts: { show?: boolean } = {}) {
   const state = windowState({
     defaultWidth: 1280,
     defaultHeight: 800,
@@ -66,7 +66,7 @@ export function createMainWindow(globals: Globals) {
     y: state.y,
     width: state.width,
     height: state.height,
-    show: true,
+    show: opts.show ?? true,
     title: "OpenCode",
     icon: iconPath(),
     backgroundColor,
@@ -98,23 +98,15 @@ export function createMainWindow(globals: Globals) {
 }
 
 export function createLoadingWindow(globals: Globals) {
-  const mode = tone()
   const win = new BrowserWindow({
     width: 640,
     height: 480,
     resizable: false,
     center: true,
     show: true,
+    frame: false,
     icon: iconPath(),
     backgroundColor,
-    ...(process.platform === "darwin" ? { titleBarStyle: "hidden" as const } : {}),
-    ...(process.platform === "win32"
-      ? {
-          frame: false,
-          titleBarStyle: "hidden" as const,
-          titleBarOverlay: overlay({ mode }),
-        }
-      : {}),
     webPreferences: {
       preload: join(root, "../preload/index.mjs"),
       sandbox: false,

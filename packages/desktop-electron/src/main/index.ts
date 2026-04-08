@@ -41,8 +41,11 @@ const initEmitter = new EventEmitter()
 let initStep: InitStep = { phase: "server_waiting" }
 
 let mainWindow: BrowserWindow | null = null
+let splash: BrowserWindow | null = null
+let ready = false
 let sidecar: CommandChild | null = null
 const loadingComplete = defer<void>()
+const mainReady = defer<void>()
 
 const pendingDeepLinks: string[] = []
 
@@ -112,6 +115,11 @@ function emitDeepLinks(urls: string[]) {
 }
 
 function focusMainWindow() {
+  if (!ready) {
+    splash?.show()
+    splash?.focus()
+    return
+  }
   if (!mainWindow) return
   mainWindow.show()
   mainWindow.focus()
@@ -121,12 +129,14 @@ function setInitStep(step: InitStep) {
   initStep = step
   logger.log("init step", { step })
   initEmitter.emit("step", step)
+  BrowserWindow.getAllWindows().forEach((win) => {
+    win.webContents.send("init-step", step)
+  })
 }
 
 async function initialize() {
   const needsMigration = !sqliteFileExists()
   const sqliteDone = needsMigration ? defer<void>() : undefined
-  let overlay: BrowserWindow | null = null
 
   const port = await getSidecarPort()
   const hostname = "127.0.0.1"
@@ -147,7 +157,7 @@ async function initialize() {
 
     events.on("sqlite", (progress: SqliteMigrationProgress) => {
       setInitStep({ phase: "sqlite_waiting" })
-      if (overlay) sendSqliteMigrationProgress(overlay, progress)
+      if (splash) sendSqliteMigrationProgress(splash, progress)
       if (mainWindow) sendSqliteMigrationProgress(mainWindow, progress)
       if (progress.type === "Done") sqliteDone?.resolve()
     })
@@ -173,25 +183,30 @@ async function initialize() {
     deepLinks: pendingDeepLinks,
   }
 
-  if (needsMigration) {
-    const show = await Promise.race([loadingTask.then(() => false), delay(1_000).then(() => true)])
-    if (show) {
-      overlay = createLoadingWindow(globals)
-      await delay(1_000)
-    }
-  }
+  const startup = (async () => {
+    await loadingTask
+    setInitStep({ phase: "app_waiting" })
+    mainWindow = createMainWindow(globals, { show: false })
 
-  await loadingTask
+    const ok = await Promise.race([mainReady.promise.then(() => true), delay(15_000).then(() => false)])
+    if (!ok) logger.warn("main window ready timed out")
+  })()
+
+  splash = createLoadingWindow(globals)
+
+  await startup
   setInitStep({ phase: "done" })
 
-  if (overlay) {
+  if (splash) {
     await loadingComplete.promise
+    splash.close()
+    splash = null
   }
 
-  mainWindow = createMainWindow(globals)
   wireMenu()
-
-  overlay?.close()
+  ready = true
+  mainWindow?.show()
+  mainWindow?.focus()
 }
 
 function wireMenu() {
@@ -240,6 +255,7 @@ registerIpcHandlers({
   wslPath: async (path, mode) => wslPath(path, mode),
   resolveAppPath: async (appName) => resolveAppPath(appName),
   loadingWindowComplete: () => loadingComplete.resolve(),
+  mainWindowReady: () => mainReady.resolve(),
   runUpdater: async (alertOnFail) => checkForUpdates(alertOnFail),
   checkUpdate: async () => checkUpdate(),
   installUpdate: async () => installUpdate(),

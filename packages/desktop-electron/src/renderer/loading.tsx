@@ -25,6 +25,7 @@ render(() => {
   })
 
   window.api.awaitInitialization((next) => setStep(next as InitStep)).catch(() => undefined)
+  const off = window.api.onInitStep((next) => setStep(next))
 
   onMount(() => {
     setLine(0)
@@ -41,6 +42,7 @@ render(() => {
     })
 
     onCleanup(() => {
+      off()
       listener()
       timers.forEach(clearTimeout)
     })
@@ -63,20 +65,24 @@ render(() => {
     <MetaProvider>
       <div class="w-screen h-screen bg-background-base flex items-center justify-center">
         <Font />
-        <div class="flex flex-col items-center gap-11">
-          <Splash class="w-20 h-25 opacity-15" />
-          <div class="w-60 flex flex-col items-center gap-4" aria-live="polite">
-            <span class="w-full overflow-hidden text-center text-ellipsis whitespace-nowrap text-text-strong text-14-normal">
-              {status()}
-            </span>
-            <Progress
-              value={value()}
-              class="w-20 [&_[data-slot='progress-track']]:h-1 [&_[data-slot='progress-track']]:border-0 [&_[data-slot='progress-track']]:rounded-none [&_[data-slot='progress-track']]:bg-surface-weak [&_[data-slot='progress-fill']]:rounded-none [&_[data-slot='progress-fill']]:bg-icon-warning-base"
-              aria-label="Database migration progress"
-              getValueLabel={({ value }) => `${Math.round(value)}%`}
-            />
+        {phase() === "sqlite_waiting" ? (
+          <div class="flex flex-col items-center gap-11">
+            <Splash class="w-20 h-25 opacity-15" />
+            <div class="w-60 flex flex-col items-center gap-4" aria-live="polite">
+              <span class="w-full overflow-hidden text-center text-ellipsis whitespace-nowrap text-text-strong text-14-normal">
+                {status()}
+              </span>
+              <Progress
+                value={value()}
+                class="w-20 [&_[data-slot='progress-track']]:h-1 [&_[data-slot='progress-track']]:border-0 [&_[data-slot='progress-track']]:rounded-none [&_[data-slot='progress-track']]:bg-surface-weak [&_[data-slot='progress-fill']]:rounded-none [&_[data-slot='progress-fill']]:bg-icon-warning-base"
+                aria-label="Database migration progress"
+                getValueLabel={({ value }) => `${Math.round(value)}%`}
+              />
+            </div>
           </div>
-        </div>
+        ) : (
+          <Splash class="w-16 h-20 opacity-50 animate-pulse" />
+        )}
       </div>
     </MetaProvider>
   )
