@@ -642,7 +642,7 @@
   padding-left: 13px;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 12px;
 
   [data-slot="context-tool-group-item"] {
     min-width: 0;

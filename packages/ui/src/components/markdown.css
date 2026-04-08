@@ -6,7 +6,7 @@
   color: var(--text-strong);
   font-family: var(--font-family-sans);
   font-size: var(--font-size-base); /* 14px */
-  line-height: var(--line-height-x-large);
+  line-height: 160%;
 
   /* Spacing for flow */
   > *:first-child {
