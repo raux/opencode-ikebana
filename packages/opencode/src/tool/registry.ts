@@ -97,11 +97,11 @@ export namespace ToolRegistry {
               parameters: z.object(def.args),
               description: def.description,
               execute: async (args, toolCtx) => {
-                const pluginCtx = {
+                const pluginCtx: PluginToolContext = {
                   ...toolCtx,
                   directory: ctx.directory,
                   worktree: ctx.worktree,
-                } as unknown as PluginToolContext
+                }
                 const result = await def.execute(args as any, pluginCtx)
                 const out = await Truncate.output(result, {}, await Agent.get(toolCtx.agent))
                 return {
