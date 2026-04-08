@@ -2735,14 +2735,14 @@ export default function DictationScreen() {
     scanLockRef.current = false
     const current =
       camera ??
-      (await import("expo-camera")
-        .catch(() => null)
-        .then((mod) => {
-          if (!mod) return null
-
+      (() => {
+        try {
+          // Expo dev builds were failing to resolve this native module through async import().
+          const mod = require("expo-camera") as typeof import("expo-camera") & {
+            Camera?: { requestCameraPermissionsAsync?: unknown }
+          }
           const direct = (mod as { requestCameraPermissionsAsync?: unknown }).requestCameraPermissionsAsync
-          const fromCamera = (mod as { Camera?: { requestCameraPermissionsAsync?: unknown } }).Camera
-            ?.requestCameraPermissionsAsync
+          const fromCamera = mod.Camera?.requestCameraPermissionsAsync
           let requestCameraPermissionsAsync: (() => Promise<{ granted: boolean }>) | null = null
           if (typeof direct === "function") {
             requestCameraPermissionsAsync = direct as () => Promise<{ granted: boolean }>
@@ -2750,7 +2750,7 @@ export default function DictationScreen() {
             requestCameraPermissionsAsync = fromCamera as () => Promise<{ granted: boolean }>
           }
 
-          if (!requestCameraPermissionsAsync) {
+          if (!mod.CameraView || !requestCameraPermissionsAsync) {
             return null
           }
 
@@ -2760,7 +2760,10 @@ export default function DictationScreen() {
           }
           setCamera(next)
           return next
-        }))
+        } catch {
+          return null
+        }
+      })()
     if (!current) {
       Alert.alert("Scanner unavailable", "This build does not include camera support. Reinstall the latest dev build.")
       return

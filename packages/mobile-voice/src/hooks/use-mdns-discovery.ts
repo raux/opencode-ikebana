@@ -214,40 +214,37 @@ export function useMdnsDiscovery(input: UseMdnsDiscoveryInput) {
 
     startScanRef.current = startScan
 
-    void import("react-native-zeroconf")
-      .then((module) => {
-        if (!active) return
-
-        const mod = module as ZeroconfModule
-        const Zeroconf = mod.default
-        if (typeof Zeroconf !== "function") {
-          setDiscoveryAvailable(false)
-          setDiscoveryStatus("error")
-          setDiscoveryError("mDNS module unavailable")
-          return
-        }
-
-        zeroconf = new Zeroconf()
-        androidImplType = Platform.OS === "android" ? (mod.ImplType?.DNSSD ?? "DNSSD") : undefined
-        setDiscoveryAvailable(true)
-
-        zeroconf.on("resolved", rebuildServices)
-        zeroconf.on("remove", rebuildServices)
-        zeroconf.on("update", rebuildServices)
-        zeroconf.on("error", (error) => {
-          if (!active) return
-          setDiscoveryStatus("error")
-          setDiscoveryError(toErrorMessage(error))
-        })
-
-        startScan()
-      })
-      .catch((error) => {
-        if (!active) return
+    try {
+      // Expo dev builds were failing to resolve this native module through async import().
+      const mod = require("react-native-zeroconf") as ZeroconfModule
+      const Zeroconf = mod.default
+      if (typeof Zeroconf !== "function") {
         setDiscoveryAvailable(false)
+        setDiscoveryStatus("error")
+        setDiscoveryError("mDNS module unavailable")
+        return
+      }
+
+      zeroconf = new Zeroconf()
+      androidImplType = Platform.OS === "android" ? (mod.ImplType?.DNSSD ?? "DNSSD") : undefined
+      setDiscoveryAvailable(true)
+
+      zeroconf.on("resolved", rebuildServices)
+      zeroconf.on("remove", rebuildServices)
+      zeroconf.on("update", rebuildServices)
+      zeroconf.on("error", (error) => {
+        if (!active) return
         setDiscoveryStatus("error")
         setDiscoveryError(toErrorMessage(error))
       })
+
+      startScan()
+    } catch (error) {
+      if (!active) return
+      setDiscoveryAvailable(false)
+      setDiscoveryStatus("error")
+      setDiscoveryError(toErrorMessage(error))
+    }
 
     return () => {
       active = false
