@@ -37,6 +37,7 @@ const PushPairResult = z
     z.object({
       enabled: z.literal(true),
       hosts: z.array(z.string()),
+      link: z.string(),
       qr: z.string(),
     }),
   ])
@@ -440,11 +441,13 @@ export const ExperimentalRoutes = lazy(() =>
           })
         }
 
+        const link = pushPairLink(pair)
         const qr = await pushPairQRCode(pair)
 
         return c.json({
           enabled: true,
           hosts: pair.hosts,
+          link,
           qr,
         })
       },
