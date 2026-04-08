@@ -167,7 +167,7 @@ async function printPairQR(pair: PairPayload) {
   const code = await QRCode.toString(link, {
     ...qrConfig,
   })
-  console.log("scan qr code in mobile app or phone camera (latest 1.0.2)")
+  console.log("scan qr code in mobile app or phone camera (latest 1.0.2.1)")
   console.log(code)
 }
 
