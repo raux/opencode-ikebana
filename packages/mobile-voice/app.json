@@ -2,7 +2,7 @@
   "expo": {
     "name": "Control",
     "slug": "control",
-    "version": "1.0.0",
+    "version": "1.0.2",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "mobilevoice",
@@ -93,7 +93,7 @@
       }
     },
     "owner": "anomaly-co",
-    "runtimeVersion": "1.0.0",
+    "runtimeVersion": "1.0.2",
     "updates": {
       "url": "https://u.expo.dev/50b3dac3-8b5e-4142-b749-65ecf7b2904d"
     }

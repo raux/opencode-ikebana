@@ -3,3 +3,4 @@
 - We need some sort of permissions UI in the top half of the generation.
 - Need to figure out a good way to start new sessions.
 - When an agent returns a generation, we should be able to expand it into a reader mode view.
+- Work on the live activity widget.

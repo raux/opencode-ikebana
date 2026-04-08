@@ -58,6 +58,40 @@ const READER_ACTION_GAP = 14
 const READER_ACTION_TRAVEL = READER_ACTION_SIZE + READER_ACTION_GAP
 const READER_ACTION_RAIL_WIDTH = READER_ACTION_SIZE * 2 + READER_ACTION_GAP
 const AGENT_SUCCESS_GREEN = "#91C29D"
+
+// ---------------------------------------------------------------------------
+// Semantic color tokens
+// ---------------------------------------------------------------------------
+const C = {
+  bg: "#121212",
+  surface: "#151515",
+  surfaceRaised: "#17181B",
+  border: "#282828",
+  borderSubtle: "#222733",
+  borderMuted: "#242424",
+  textPrimary: "#F1F1F1",
+  textSecondary: "#D6DAE4",
+  textTertiary: "#B8BDC9",
+  textMuted: "#8F97AA",
+  textDimmed: "#6F7686",
+  textPlaceholder: "#4A5060",
+  blue: "#1D6FF4",
+  blueBorder: "#1557C3",
+  red: "#FF2E3F",
+  redBg: "#421B17",
+  green: AGENT_SUCCESS_GREEN,
+  orange: "#FFB347",
+  yellow: "#D2A542",
+} as const
+
+// Unified primary button metrics
+const BTN_PRIMARY = {
+  minHeight: 52,
+  borderRadius: 16,
+  borderWidth: 2,
+  backgroundColor: C.blue,
+  borderColor: C.blueBorder,
+} as const
 const DROPDOWN_VISIBLE_ROWS = 6
 const DROPDOWN_ROW_HEIGHT = 42
 const SERVER_MENU_SECTION_HEIGHT = 56
@@ -168,6 +202,68 @@ const WHISPER_MODEL_SIZES: Record<WhisperModelID, number> = {
   "ggml-medium-q8_0.bin": 823369779,
   "ggml-medium.bin": 1533763059,
 }
+
+type WhisperModelFamily = {
+  key: string
+  label: string
+  description: string
+  models: WhisperModelID[]
+}
+
+const WHISPER_MODEL_FAMILIES: WhisperModelFamily[] = [
+  {
+    key: "tiny",
+    label: "Tiny",
+    description: "Fastest, lowest quality",
+    models: [
+      "ggml-tiny.en-q5_1.bin",
+      "ggml-tiny.en-q8_0.bin",
+      "ggml-tiny.en.bin",
+      "ggml-tiny-q5_1.bin",
+      "ggml-tiny-q8_0.bin",
+      "ggml-tiny.bin",
+    ],
+  },
+  {
+    key: "base",
+    label: "Base",
+    description: "Good balance of speed and quality",
+    models: [
+      "ggml-base.en-q5_1.bin",
+      "ggml-base.en-q8_0.bin",
+      "ggml-base.en.bin",
+      "ggml-base-q5_1.bin",
+      "ggml-base-q8_0.bin",
+      "ggml-base.bin",
+    ],
+  },
+  {
+    key: "small",
+    label: "Small",
+    description: "Higher quality, moderate size",
+    models: [
+      "ggml-small.en-q5_1.bin",
+      "ggml-small.en-q8_0.bin",
+      "ggml-small.en.bin",
+      "ggml-small-q5_1.bin",
+      "ggml-small-q8_0.bin",
+      "ggml-small.bin",
+    ],
+  },
+  {
+    key: "medium",
+    label: "Medium",
+    description: "Best quality, largest download",
+    models: [
+      "ggml-medium.en-q5_0.bin",
+      "ggml-medium.en-q8_0.bin",
+      "ggml-medium.en.bin",
+      "ggml-medium-q5_0.bin",
+      "ggml-medium-q8_0.bin",
+      "ggml-medium.bin",
+    ],
+  },
+]
 
 function isWhisperModelID(value: unknown): value is WhisperModelID {
   return typeof value === "string" && (WHISPER_MODELS as readonly string[]).includes(value)
@@ -2403,6 +2499,125 @@ export default function DictationScreen() {
     )
   }
 
+  const renderTranscriptionPanel = () => (
+    <View style={styles.transcriptionPanel} onLayout={handleTranscriptionPanelLayout}>
+      <View style={styles.transcriptionTopActions} pointerEvents="box-none">
+        <Pressable
+          onPress={handleOpenWhisperSettings}
+          style={({ pressed }) => [styles.clearButton, pressed && styles.clearButtonPressed]}
+          hitSlop={8}
+        >
+          <SymbolView
+            name={{ ios: "gearshape.fill", android: "settings", web: "settings" }}
+            size={18}
+            weight="semibold"
+            tintColor={C.textTertiary}
+          />
+        </Pressable>
+        <Pressable
+          onPress={handleClearTranscript}
+          style={({ pressed }) => [styles.clearButton, pressed && styles.clearButtonPressed]}
+          hitSlop={8}
+        >
+          <Animated.View style={animatedClearIconStyle}>
+            <SymbolView
+              name={{ ios: "arrow.counterclockwise", android: "refresh", web: "refresh" }}
+              size={18}
+              weight="semibold"
+              tintColor="#A0A0A0"
+            />
+          </Animated.View>
+        </Pressable>
+      </View>
+
+      {whisperError ? (
+        <View style={styles.modelErrorBadge}>
+          <Text style={styles.modelErrorText}>{whisperError}</Text>
+        </View>
+      ) : null}
+
+      {promptPagerData.length > 1 ? (
+        <FlatList
+          ref={promptPagerRef}
+          data={promptPagerData}
+          keyExtractor={promptPagerKeyExtractor}
+          horizontal
+          pagingEnabled
+          bounces={false}
+          showsHorizontalScrollIndicator={false}
+          onMomentumScrollEnd={handlePromptPagerSnap}
+          initialScrollIndex={0}
+          getItemLayout={(_data, index) => ({
+            length: pagerPageWidth,
+            offset: pagerPageWidth * index,
+            index,
+          })}
+          style={styles.transcriptionScroll}
+          renderItem={({ item }) =>
+            item === "live" ? (
+              <ScrollView
+                ref={scrollViewRef}
+                style={{ width: pagerPageWidth }}
+                contentContainerStyle={[styles.transcriptionContent, styles.transcriptionContentLive]}
+                onContentSizeChange={() => scrollViewRef.current?.scrollToEnd({ animated: true })}
+              >
+                <Animated.View style={animatedTranscriptSendStyle}>
+                  {displayedTranscript ? (
+                    <Text style={styles.transcriptionText}>{displayedTranscript}</Text>
+                  ) : isSending ? null : (
+                    <Text style={styles.placeholderText}>Your transcription will appear here…</Text>
+                  )}
+                </Animated.View>
+                <Animated.View style={[styles.swipeHint, animatedSwipeHintStyle]} pointerEvents="none">
+                  {!displayedTranscript && !isSending ? (
+                    <>
+                      <Text style={styles.swipeHintText}>Swipe left to see previous prompts</Text>
+                      <Text style={styles.swipeHintArrow}>→</Text>
+                    </>
+                  ) : null}
+                </Animated.View>
+              </ScrollView>
+            ) : (
+              <ScrollView style={{ width: pagerPageWidth }} contentContainerStyle={styles.transcriptionContent}>
+                <Text style={styles.promptHistoryLabel}>Previous prompt</Text>
+                <Text style={styles.promptHistoryText}>{item.promptText}</Text>
+              </ScrollView>
+            )
+          }
+        />
+      ) : (
+        <ScrollView
+          ref={scrollViewRef}
+          style={styles.transcriptionScroll}
+          contentContainerStyle={styles.transcriptionContent}
+          onContentSizeChange={() => scrollViewRef.current?.scrollToEnd({ animated: true })}
+        >
+          <Animated.View style={animatedTranscriptSendStyle}>
+            {displayedTranscript ? (
+              <Text style={styles.transcriptionText}>{displayedTranscript}</Text>
+            ) : isSending ? null : (
+              <Text style={styles.placeholderText}>Your transcription will appear here…</Text>
+            )}
+          </Animated.View>
+        </ScrollView>
+      )}
+
+      <Animated.View
+        style={[styles.waveformBoxesRow, animatedWaveformRowStyle]}
+        pointerEvents="none"
+        onLayout={handleWaveformLayout}
+      >
+        {Array.from({ length: WAVEFORM_ROWS }).map((_, row) => (
+          <View key={`row-${row}`} style={styles.waveformGridRow}>
+            {waveformLevels.map((_, col) => (
+              <View key={`cell-${row}-${col}`} style={[styles.waveformBox, getWaveformCellStyle(row, col)]} />
+            ))}
+          </View>
+        ))}
+      </Animated.View>
+    </View>
+  )
+
   const toggleServerMenu = useCallback(() => {
     void Haptics.selectionAsync().catch(() => {})
     setDropdownMode((prev) => {
@@ -3089,7 +3304,12 @@ export default function DictationScreen() {
                         />
                         <Text style={styles.serverNameText}>{server.name}</Text>
                         <Pressable onPress={() => handleDeleteServer(server.id)} hitSlop={8}>
-                          <Text style={styles.serverDeleteIcon}>✕</Text>
+                          <SymbolView
+                            name={{ ios: "xmark", android: "close", web: "close" }}
+                            size={12}
+                            weight="bold"
+                            tintColor="#8C93A3"
+                          />
                         </Pressable>
                       </Pressable>
                     ))
@@ -3389,7 +3609,12 @@ export default function DictationScreen() {
                       </Pressable>
                     ) : null}
                     <Pressable onPress={handleHideAgentState} hitSlop={8} style={styles.agentStateActionButton}>
-                      <Text style={styles.agentStateClose}>✕</Text>
+                      <SymbolView
+                        name={{ ios: "xmark", android: "close", web: "close" }}
+                        size={14}
+                        weight="bold"
+                        tintColor="#8D97AB"
+                      />
                     </Pressable>
                   </Animated.View>
                 </View>
@@ -3398,118 +3623,7 @@ export default function DictationScreen() {
                 </ScrollView>
               </View>
 
-              <View style={styles.transcriptionPanel} onLayout={handleTranscriptionPanelLayout}>
-                <View style={styles.transcriptionTopActions} pointerEvents="box-none">
-                  <Pressable
-                    onPress={handleOpenWhisperSettings}
-                    style={({ pressed }) => [styles.clearButton, pressed && styles.clearButtonPressed]}
-                    hitSlop={8}
-                  >
-                    <SymbolView
-                      name={{ ios: "gearshape.fill", android: "settings", web: "settings" }}
-                      size={18}
-                      weight="semibold"
-                      tintColor="#B8BDC9"
-                    />
-                  </Pressable>
-                  <Pressable
-                    onPress={handleClearTranscript}
-                    style={({ pressed }) => [styles.clearButton, pressed && styles.clearButtonPressed]}
-                    hitSlop={8}
-                  >
-                    <Animated.Text style={[styles.clearIcon, animatedClearIconStyle]}>↻</Animated.Text>
-                  </Pressable>
-                </View>
-
-                {whisperError ? (
-                  <View style={styles.modelErrorBadge}>
-                    <Text style={styles.modelErrorText}>{whisperError}</Text>
-                  </View>
-                ) : null}
-
-                {promptPagerData.length > 1 ? (
-                  <FlatList
-                    ref={promptPagerRef}
-                    data={promptPagerData}
-                    keyExtractor={promptPagerKeyExtractor}
-                    horizontal
-                    pagingEnabled
-                    bounces={false}
-                    showsHorizontalScrollIndicator={false}
-                    onMomentumScrollEnd={handlePromptPagerSnap}
-                    initialScrollIndex={0}
-                    getItemLayout={(_data, index) => ({
-                      length: pagerPageWidth,
-                      offset: pagerPageWidth * index,
-                      index,
-                    })}
-                    style={styles.transcriptionScroll}
-                    renderItem={({ item }) =>
-                      item === "live" ? (
-                        <ScrollView
-                          ref={scrollViewRef}
-                          style={{ width: pagerPageWidth }}
-                          contentContainerStyle={[styles.transcriptionContent, styles.transcriptionContentLive]}
-                          onContentSizeChange={() => scrollViewRef.current?.scrollToEnd({ animated: true })}
-                        >
-                          <Animated.View style={animatedTranscriptSendStyle}>
-                            {displayedTranscript ? (
-                              <Text style={styles.transcriptionText}>{displayedTranscript}</Text>
-                            ) : isSending ? null : (
-                              <Text style={styles.placeholderText}>Your transcription will appear here…</Text>
-                            )}
-                          </Animated.View>
-                          <Animated.View style={[styles.swipeHint, animatedSwipeHintStyle]} pointerEvents="none">
-                            {!displayedTranscript && !isSending ? (
-                              <>
-                                <Text style={styles.swipeHintText}>Swipe left to see previous prompts</Text>
-                                <Text style={styles.swipeHintArrow}>→</Text>
-                              </>
-                            ) : null}
-                          </Animated.View>
-                        </ScrollView>
-                      ) : (
-                        <ScrollView
-                          style={{ width: pagerPageWidth }}
-                          contentContainerStyle={styles.transcriptionContent}
-                        >
-                          <Text style={styles.promptHistoryLabel}>Previous prompt</Text>
-                          <Text style={styles.promptHistoryText}>{item.promptText}</Text>
-                        </ScrollView>
-                      )
-                    }
-                  />
-                ) : (
-                  <ScrollView
-                    ref={scrollViewRef}
-                    style={styles.transcriptionScroll}
-                    contentContainerStyle={styles.transcriptionContent}
-                    onContentSizeChange={() => scrollViewRef.current?.scrollToEnd({ animated: true })}
-                  >
-                    <Animated.View style={animatedTranscriptSendStyle}>
-                      {displayedTranscript ? (
-                        <Text style={styles.transcriptionText}>{displayedTranscript}</Text>
-                      ) : isSending ? null : (
-                        <Text style={styles.placeholderText}>Your transcription will appear here…</Text>
-                      )}
-                    </Animated.View>
-                  </ScrollView>
-                )}
-
-                <Animated.View
-                  style={[styles.waveformBoxesRow, animatedWaveformRowStyle]}
-                  pointerEvents="none"
-                  onLayout={handleWaveformLayout}
-                >
-                  {Array.from({ length: WAVEFORM_ROWS }).map((_, row) => (
-                    <View key={`row-${row}`} style={styles.waveformGridRow}>
-                      {waveformLevels.map((_, col) => (
-                        <View key={`cell-${row}-${col}`} style={[styles.waveformBox, getWaveformCellStyle(row, col)]} />
-                      ))}
-                    </View>
-                  ))}
-                </Animated.View>
-              </View>
+              {renderTranscriptionPanel()}
             </View>
 
             {readerModeVisible ? (
@@ -3568,111 +3682,7 @@ export default function DictationScreen() {
             ) : null}
           </>
         ) : (
-          <View style={styles.transcriptionPanel} onLayout={handleTranscriptionPanelLayout}>
-            <View style={styles.transcriptionTopActions} pointerEvents="box-none">
-              <Pressable
-                onPress={handleOpenWhisperSettings}
-                style={({ pressed }) => [styles.clearButton, pressed && styles.clearButtonPressed]}
-                hitSlop={8}
-              >
-                <SymbolView
-                  name={{ ios: "gearshape.fill", android: "settings", web: "settings" }}
-                  size={18}
-                  weight="semibold"
-                  tintColor="#B8BDC9"
-                />
-              </Pressable>
-              <Pressable
-                onPress={handleClearTranscript}
-                style={({ pressed }) => [styles.clearButton, pressed && styles.clearButtonPressed]}
-                hitSlop={8}
-              >
-                <Animated.Text style={[styles.clearIcon, animatedClearIconStyle]}>↻</Animated.Text>
-              </Pressable>
-            </View>
-
-            {whisperError ? (
-              <View style={styles.modelErrorBadge}>
-                <Text style={styles.modelErrorText}>{whisperError}</Text>
-              </View>
-            ) : null}
-
-            {promptPagerData.length > 1 ? (
-              <FlatList
-                ref={promptPagerRef}
-                data={promptPagerData}
-                keyExtractor={promptPagerKeyExtractor}
-                horizontal
-                pagingEnabled
-                bounces={false}
-                showsHorizontalScrollIndicator={false}
-                onMomentumScrollEnd={handlePromptPagerSnap}
-                initialScrollIndex={0}
-                getItemLayout={(_data, index) => ({ length: pagerPageWidth, offset: pagerPageWidth * index, index })}
-                style={styles.transcriptionScroll}
-                renderItem={({ item }) =>
-                  item === "live" ? (
-                    <ScrollView
-                      ref={scrollViewRef}
-                      style={{ width: pagerPageWidth }}
-                      contentContainerStyle={[styles.transcriptionContent, styles.transcriptionContentLive]}
-                      onContentSizeChange={() => scrollViewRef.current?.scrollToEnd({ animated: true })}
-                    >
-                      <Animated.View style={animatedTranscriptSendStyle}>
-                        {displayedTranscript ? (
-                          <Text style={styles.transcriptionText}>{displayedTranscript}</Text>
-                        ) : isSending ? null : (
-                          <Text style={styles.placeholderText}>Your transcription will appear here…</Text>
-                        )}
-                      </Animated.View>
-                      <Animated.View style={[styles.swipeHint, animatedSwipeHintStyle]} pointerEvents="none">
-                        {!displayedTranscript && !isSending ? (
-                          <>
-                            <Text style={styles.swipeHintText}>Swipe left to see previous prompts</Text>
-                            <Text style={styles.swipeHintArrow}>→</Text>
-                          </>
-                        ) : null}
-                      </Animated.View>
-                    </ScrollView>
-                  ) : (
-                    <ScrollView style={{ width: pagerPageWidth }} contentContainerStyle={styles.transcriptionContent}>
-                      <Text style={styles.promptHistoryLabel}>Previous prompt</Text>
-                      <Text style={styles.promptHistoryText}>{item.promptText}</Text>
-                    </ScrollView>
-                  )
-                }
-              />
-            ) : (
-              <ScrollView
-                ref={scrollViewRef}
-                style={styles.transcriptionScroll}
-                contentContainerStyle={styles.transcriptionContent}
-                onContentSizeChange={() => scrollViewRef.current?.scrollToEnd({ animated: true })}
-              >
-                <Animated.View style={animatedTranscriptSendStyle}>
-                  {displayedTranscript ? (
-                    <Text style={styles.transcriptionText}>{displayedTranscript}</Text>
-                  ) : isSending ? null : (
-                    <Text style={styles.placeholderText}>Your transcription will appear here…</Text>
-                  )}
-                </Animated.View>
-              </ScrollView>
-            )}
-
-            <Animated.View
-              style={[styles.waveformBoxesRow, animatedWaveformRowStyle]}
-              pointerEvents="none"
-              onLayout={handleWaveformLayout}
-            >
-              {Array.from({ length: WAVEFORM_ROWS }).map((_, row) => (
-                <View key={`row-${row}`} style={styles.waveformGridRow}>
-                  {waveformLevels.map((_, col) => (
-                    <View key={`cell-${row}-${col}`} style={[styles.waveformBox, getWaveformCellStyle(row, col)]} />
-                  ))}
-                </View>
-              ))}
-            </Animated.View>
-          </View>
+          renderTranscriptionPanel()
         )}
       </View>
 
@@ -3726,7 +3736,12 @@ export default function DictationScreen() {
               disabled={isSending || !hasTranscript || !canSendToSession}
               hitSlop={8}
             >
-              <Text style={styles.sendIcon}>↑</Text>
+              <SymbolView
+                name={{ ios: "arrow.up", android: "arrow_upward", web: "arrow_upward" }}
+                size={28}
+                weight="bold"
+                tintColor="#FFFFFF"
+              />
             </Pressable>
           </Animated.View>
         </View>
@@ -3805,95 +3820,98 @@ export default function DictationScreen() {
               </View>
             </View>
 
-            <View style={styles.settingsSection}>
-              <Text style={styles.settingsSectionLabel}>MODELS:</Text>
-              <View style={styles.settingsTextRow}>
-                <Text style={styles.settingsMutedText}>Mobile devices currently support models up to `medium`.</Text>
-              </View>
-              {WHISPER_MODELS.map((modelID) => {
-                const installed = installedWhisperModels.includes(modelID)
-                const isDefault = defaultWhisperModel === modelID
-                const isDownloading = downloadingModelID === modelID
-                const actionDisabled = (downloadingModelID !== null && !isDownloading) || isTranscribingBulk
-                const downloadPct = Math.round(Math.max(0, Math.min(1, downloadProgress)) * 100)
-                const actionLabel = isDownloading
-                  ? `${downloadPct}%`
-                  : installed
-                    ? isDefault
-                      ? "Selected"
-                      : "Select"
-                    : "Download"
-                const sizeLabel = formatWhisperModelSize(WHISPER_MODEL_SIZES[modelID])
-                const rowMeta = [sizeLabel, installed ? "installed" : null, isDefault ? "default" : null]
-                  .filter(Boolean)
-                  .join(" · ")
+            {WHISPER_MODEL_FAMILIES.map((family) => (
+              <View key={family.key} style={styles.settingsSection}>
+                <Text style={styles.settingsSectionLabel}>{family.label.toUpperCase()}:</Text>
+                <View style={styles.settingsTextRow}>
+                  <Text style={styles.settingsMutedText}>{family.description}</Text>
+                </View>
+                {family.models.map((modelID) => {
+                  const installed = installedWhisperModels.includes(modelID)
+                  const isDefault = defaultWhisperModel === modelID
+                  const isDownloading = downloadingModelID === modelID
+                  const actionDisabled = (downloadingModelID !== null && !isDownloading) || isTranscribingBulk
+                  const downloadPct = Math.round(Math.max(0, Math.min(1, downloadProgress)) * 100)
+                  const actionLabel = isDownloading
+                    ? `${downloadPct}%`
+                    : installed
+                      ? isDefault
+                        ? "Selected"
+                        : "Select"
+                      : "Download"
+                  const sizeLabel = formatWhisperModelSize(WHISPER_MODEL_SIZES[modelID])
+                  const friendlyName = WHISPER_MODEL_LABELS[modelID]
+                  const rowMeta = [sizeLabel, installed ? "installed" : null, isDefault ? "default" : null]
+                    .filter(Boolean)
+                    .join(" · ")
 
-                return (
-                  <View key={modelID} style={styles.settingsInlineRow}>
-                    <Pressable
-                      onPress={() => {
-                        if (installed) {
-                          void handleSelectWhisperModel(modelID)
-                        }
-                      }}
-                      onLongPress={() => {
-                        if (!installed || isDownloading) return
-                        Alert.alert("Delete model?", `Remove ${modelID} from this device?`, [
-                          { text: "Cancel", style: "cancel" },
-                          {
-                            text: "Delete",
-                            style: "destructive",
-                            onPress: () => {
-                              void handleDeleteWhisperModel(modelID)
+                  return (
+                    <View key={modelID} style={styles.settingsInlineRow}>
+                      <Pressable
+                        onPress={() => {
+                          if (installed) {
+                            void handleSelectWhisperModel(modelID)
+                          }
+                        }}
+                        onLongPress={() => {
+                          if (!installed || isDownloading) return
+                          Alert.alert("Delete model?", `Remove ${friendlyName} from this device?`, [
+                            { text: "Cancel", style: "cancel" },
+                            {
+                              text: "Delete",
+                              style: "destructive",
+                              onPress: () => {
+                                void handleDeleteWhisperModel(modelID)
+                              },
                             },
-                          },
-                        ])
-                      }}
-                      delayLongPress={350}
-                      disabled={!installed || actionDisabled || isPreparingWhisperModel}
-                      style={({ pressed }) => [
-                        styles.settingsInlineLabelPressable,
-                        (!installed || actionDisabled || isPreparingWhisperModel) &&
-                          styles.settingsInlinePressableDisabled,
-                        pressed && styles.clearButtonPressed,
-                      ]}
-                    >
-                      <Text style={styles.settingsInlineName}>{modelID}</Text>
-                      <Text style={styles.settingsInlineMeta}>{rowMeta}</Text>
-                    </Pressable>
-
-                    <Pressable
-                      onPress={() => {
-                        if (isDownloading) return
-                        if (installed) {
-                          void handleSelectWhisperModel(modelID)
-                          return
-                        }
-                        void handleDownloadWhisperModel(modelID)
-                      }}
-                      disabled={actionDisabled || (installed && isPreparingWhisperModel)}
-                      accessibilityLabel={actionLabel}
-                      style={({ pressed }) => [
-                        styles.settingsInlineTextActionPressable,
-                        (actionDisabled || (installed && isPreparingWhisperModel)) &&
-                          styles.settingsInlinePressableDisabled,
-                        pressed && styles.clearButtonPressed,
-                      ]}
-                    >
-                      <Text
-                        style={[
-                          styles.settingsInlineTextAction,
-                          installed && styles.settingsInlineTextActionInstalled,
-                          isDownloading && styles.settingsInlineTextActionDownloading,
+                          ])
+                        }}
+                        delayLongPress={350}
+                        disabled={!installed || actionDisabled || isPreparingWhisperModel}
+                        style={({ pressed }) => [
+                          styles.settingsInlineLabelPressable,
+                          (!installed || actionDisabled || isPreparingWhisperModel) &&
+                            styles.settingsInlinePressableDisabled,
+                          pressed && styles.clearButtonPressed,
                         ]}
                       >
-                        {actionLabel}
-                      </Text>
-                    </Pressable>
-                  </View>
-                )
-              })}
-            </View>
+                        <Text style={styles.settingsInlineName}>{friendlyName}</Text>
+                        <Text style={styles.settingsInlineMeta}>{rowMeta}</Text>
+                      </Pressable>
+
+                      <Pressable
+                        onPress={() => {
+                          if (isDownloading) return
+                          if (installed) {
+                            void handleSelectWhisperModel(modelID)
+                            return
+                          }
+                          void handleDownloadWhisperModel(modelID)
+                        }}
+                        disabled={actionDisabled || (installed && isPreparingWhisperModel)}
+                        accessibilityLabel={actionLabel}
+                        style={({ pressed }) => [
+                          styles.settingsInlineTextActionPressable,
+                          (actionDisabled || (installed && isPreparingWhisperModel)) &&
+                            styles.settingsInlinePressableDisabled,
+                          pressed && styles.clearButtonPressed,
+                        ]}
+                      >
+                        <Text
+                          style={[
+                            styles.settingsInlineTextAction,
+                            installed && styles.settingsInlineTextActionInstalled,
+                            isDownloading && styles.settingsInlineTextActionDownloading,
+                          ]}
+                        >
+                          {actionLabel}
+                        </Text>
+                      </Pressable>
+                    </View>
+                  )
+                })}
+              </View>
+            ))}
           </ScrollView>
         </SafeAreaView>
       </Modal>
@@ -4034,12 +4052,12 @@ export default function DictationScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#121212",
+    backgroundColor: C.bg,
     position: "relative",
   },
   onboardingRoot: {
     flex: 1,
-    backgroundColor: "#121212",
+    backgroundColor: C.bg,
     paddingHorizontal: 16,
   },
   onboardingShell: {
@@ -4179,7 +4197,7 @@ const styles = StyleSheet.create({
     letterSpacing: 1.3,
   },
   onboardingTitle: {
-    color: "#F1F1F1",
+    color: C.textPrimary,
     fontSize: 34,
     fontWeight: "800",
     textAlign: "left",
@@ -4198,13 +4216,13 @@ const styles = StyleSheet.create({
     paddingTop: 6,
   },
   onboardingPrimaryButton: {
-    height: 56,
-    borderRadius: 14,
+    minHeight: BTN_PRIMARY.minHeight,
+    borderRadius: BTN_PRIMARY.borderRadius,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#1D6FF4",
-    borderWidth: 2,
-    borderColor: "#1557C3",
+    backgroundColor: BTN_PRIMARY.backgroundColor,
+    borderWidth: BTN_PRIMARY.borderWidth,
+    borderColor: BTN_PRIMARY.borderColor,
     flexDirection: "row",
     gap: 10,
     shadowColor: "#000000",
@@ -4248,10 +4266,10 @@ const styles = StyleSheet.create({
     top: 0,
     left: 0,
     right: 0,
-    backgroundColor: "#151515",
+    backgroundColor: C.surface,
     borderRadius: 20,
     borderWidth: 3,
-    borderColor: "#282828",
+    borderColor: C.border,
     paddingHorizontal: 14,
     paddingTop: 0,
     overflow: "hidden",
@@ -4384,7 +4402,7 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
   },
   serverEmptyText: {
-    color: "#6F7686",
+    color: C.textDimmed,
     fontSize: 14,
     textAlign: "center",
     paddingVertical: 10,
@@ -4415,17 +4433,17 @@ const styles = StyleSheet.create({
     borderRadius: 5,
   },
   serverStatusActive: {
-    backgroundColor: AGENT_SUCCESS_GREEN,
+    backgroundColor: C.green,
   },
   serverStatusChecking: {
-    backgroundColor: "#D2A542",
+    backgroundColor: C.yellow,
   },
   serverStatusOffline: {
     backgroundColor: "#D14C55",
   },
   serverNameText: {
     flex: 1,
-    color: "#D6DAE4",
+    color: C.textSecondary,
     fontSize: 16,
     fontWeight: "500",
   },
@@ -4456,11 +4474,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 4,
     paddingTop: 4,
   },
-  serverDeleteIcon: {
-    color: "#8C93A3",
-    fontSize: 15,
-    fontWeight: "700",
-  },
+  // serverDeleteIcon: removed — replaced with SymbolView
   addServerButton: {
     marginTop: 4,
     alignSelf: "center",
@@ -4539,13 +4553,7 @@ const styles = StyleSheet.create({
   clearButtonPressed: {
     opacity: 0.75,
   },
-  clearIcon: {
-    color: "#A0A0A0",
-    fontSize: 20,
-    fontWeight: "700",
-    textAlign: "center",
-    transform: [{ translateY: -0.5 }],
-  },
+  // clearIcon: removed — replaced with SymbolView
   transcriptionArea: {
     flex: 1,
     marginHorizontal: 6,
@@ -4557,10 +4565,10 @@ const styles = StyleSheet.create({
   },
   splitCard: {
     flex: 1,
-    backgroundColor: "#151515",
+    backgroundColor: C.surface,
     borderRadius: 20,
     borderWidth: 3,
-    borderColor: "#282828",
+    borderColor: C.border,
     overflow: "hidden",
     position: "relative",
   },
@@ -4585,10 +4593,10 @@ const styles = StyleSheet.create({
     width: 10,
     height: 10,
     borderRadius: 999,
-    backgroundColor: "#FFB347",
+    backgroundColor: C.orange,
   },
   permissionEyebrow: {
-    color: "#FFB347",
+    color: C.orange,
     fontSize: 11,
     fontWeight: "800",
     letterSpacing: 1.1,
@@ -4661,13 +4669,13 @@ const styles = StyleSheet.create({
     borderTopColor: "#21252F",
   },
   permissionPrimaryButton: {
-    minHeight: 54,
-    borderRadius: 16,
+    minHeight: BTN_PRIMARY.minHeight,
+    borderRadius: BTN_PRIMARY.borderRadius,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#1D6FF4",
-    borderWidth: 2,
-    borderColor: "#1557C3",
+    backgroundColor: BTN_PRIMARY.backgroundColor,
+    borderWidth: BTN_PRIMARY.borderWidth,
+    borderColor: BTN_PRIMARY.borderColor,
     paddingHorizontal: 16,
   },
   permissionPrimaryButtonText: {
@@ -4894,12 +4902,7 @@ const styles = StyleSheet.create({
   readerToggleSymbol: {
     transform: [{ rotate: "-90deg" }],
   },
-  agentStateClose: {
-    color: "#8D97AB",
-    fontSize: 18,
-    fontWeight: "700",
-    lineHeight: 18,
-  },
+  // agentStateClose: removed — replaced with SymbolView
   replyScroll: {
     flex: 1,
   },
@@ -4992,7 +4995,7 @@ const styles = StyleSheet.create({
   placeholderText: {
     fontSize: 28,
     fontWeight: "500",
-    color: "#333",
+    color: C.textPlaceholder,
   },
   transcriptionContentLive: {
     justifyContent: "space-between",
@@ -5047,7 +5050,7 @@ const styles = StyleSheet.create({
   recordButton: {
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#421B17",
+    backgroundColor: C.redBg,
     height: CONTROL_HEIGHT,
     borderRadius: 20,
     width: "100%",
@@ -5083,7 +5086,7 @@ const styles = StyleSheet.create({
   },
   settingsRoot: {
     flex: 1,
-    backgroundColor: "#121212",
+    backgroundColor: C.bg,
     paddingHorizontal: 16,
     paddingTop: 12,
   },
@@ -5099,7 +5102,7 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   settingsTitle: {
-    color: "#F1F1F1",
+    color: C.textPrimary,
     fontSize: 20,
     fontWeight: "700",
   },
@@ -5137,7 +5140,7 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     gap: 12,
     borderBottomWidth: 1,
-    borderBottomColor: "#242424",
+    borderBottomColor: C.borderMuted,
     paddingVertical: 10,
   },
   settingsToggleRow: {
@@ -5216,7 +5219,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     minHeight: 52,
     borderBottomWidth: 1,
-    borderBottomColor: "#242424",
+    borderBottomColor: C.borderMuted,
   },
   settingsInlineLabelPressable: {
     flex: 1,
@@ -5298,7 +5301,7 @@ const styles = StyleSheet.create({
   },
   pairSelectRoot: {
     flex: 1,
-    backgroundColor: "#121212",
+    backgroundColor: C.bg,
     paddingHorizontal: 16,
     paddingTop: 12,
   },
@@ -5437,13 +5440,13 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   pairSelectPrimaryButton: {
-    height: 46,
-    borderRadius: 12,
+    minHeight: BTN_PRIMARY.minHeight,
+    borderRadius: BTN_PRIMARY.borderRadius,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#1D6FF4",
-    borderWidth: 2,
-    borderColor: "#1557C3",
+    backgroundColor: BTN_PRIMARY.backgroundColor,
+    borderWidth: BTN_PRIMARY.borderWidth,
+    borderColor: BTN_PRIMARY.borderColor,
   },
   pairSelectPrimaryButtonDisabled: {
     opacity: 0.6,
@@ -5470,20 +5473,14 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#1D6FF4",
-    borderWidth: 2,
-    borderColor: "#1557C3",
+    backgroundColor: BTN_PRIMARY.backgroundColor,
+    borderWidth: BTN_PRIMARY.borderWidth,
+    borderColor: BTN_PRIMARY.borderColor,
   },
   sendButtonDisabled: {
     opacity: 0.7,
   },
-  sendIcon: {
-    color: "#FFFFFF",
-    fontSize: 34,
-    fontWeight: "700",
-    lineHeight: 36,
-    transform: [{ translateY: -1 }],
-  },
+  // sendIcon: removed — replaced with SymbolView
   recordBorder: {
     position: "absolute",
     top: 0,
