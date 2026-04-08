@@ -230,24 +230,54 @@ function map(event: Event): { type: Type; sessionID: string } | undefined {
     const sessionID = str(event.properties.sessionID)
     if (!sessionID) return
     const route = routeSession(sessionID)
+    log.info("map: matched permission.asked", {
+      eventType: event.type,
+      sessionID: route.sessionID,
+      originalSessionID: sessionID,
+      subagent: route.subagent,
+    })
     return { type: "permission", sessionID: route.sessionID }
   }
 
   if (event.type === "session.error") {
     const sessionID = str(event.properties.sessionID)
     if (!sessionID) return
-    if (routeSession(sessionID).subagent) return
-    if (!shouldNotifyError(event.properties.error)) return
+    const route = routeSession(sessionID)
+    if (route.subagent) {
+      log.info("map: skipped session.error (subagent)", { sessionID })
+      return
+    }
+    if (!shouldNotifyError(event.properties.error)) {
+      log.info("map: skipped session.error (suppressed error type)", {
+        sessionID,
+        errorName: obj(event.properties.error) ? str(event.properties.error.name) : undefined,
+      })
+      return
+    }
+    log.info("map: matched session.error", { sessionID })
     return { type: "error", sessionID }
   }
 
-  if (event.type !== "session.status") return
-  const sessionID = str(event.properties.sessionID)
-  if (!sessionID) return
-  if (!obj(event.properties.status)) return
-  if (event.properties.status.type !== "idle") return
-  if (routeSession(sessionID).subagent) return
-  return { type: "complete", sessionID }
+  if (event.type === "session.status") {
+    const sessionID = str(event.properties.sessionID)
+    if (!sessionID) return
+    if (!obj(event.properties.status)) return
+    const statusType = str(event.properties.status.type)
+    if (statusType !== "idle") {
+      log.info("map: skipped session.status (non-idle)", { sessionID, statusType })
+      return
+    }
+    const route = routeSession(sessionID)
+    if (route.subagent) {
+      log.info("map: skipped session.status idle (subagent)", { sessionID })
+      return
+    }
+    log.info("map: matched session.status idle", { sessionID })
+    return { type: "complete", sessionID }
+  }
+
+  // not a push-eligible event type
+  return
 }
 
 function text(input: string) {
@@ -366,7 +396,15 @@ function dedupe(input: { type: Type; sessionID: string }) {
   const prev = next.seen.get(key)
   next.seen.set(key, now)
   if (!prev) return false
-  return now - prev < 5_000
+  const isDupe = now - prev < 5_000
+  if (isDupe) {
+    log.info("dedupe: suppressed duplicate", {
+      type: input.type,
+      sessionID: input.sessionID,
+      elapsedMs: now - prev,
+    })
+  }
+  return isDupe
 }
 
 async function post(input: { type: Type; sessionID: string }) {
@@ -436,8 +474,14 @@ export namespace PushRelay {
   export function start(input: Input) {
     const relayURL = norm(input.relayURL.trim())
     const relaySecret = input.relaySecret.trim()
-    if (!relayURL) return
-    if (!relaySecret) return
+    if (!relayURL) {
+      log.warn("start: relay URL is empty, push relay disabled")
+      return
+    }
+    if (!relaySecret) {
+      log.warn("start: relay secret is empty, push relay disabled")
+      return
+    }
 
     stop()
 
@@ -480,6 +524,7 @@ export namespace PushRelay {
   export function stop() {
     const next = state
     if (!next) return
+    log.info("stopping push relay")
     state = undefined
     next.stop()
   }
