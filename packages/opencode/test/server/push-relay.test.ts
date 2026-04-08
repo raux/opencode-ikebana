@@ -24,8 +24,9 @@ function created(sessionID: string, parentID?: string) {
   })
 }
 
-async function waitForCalls(count: number) {
-  for (let i = 0; i < 50; i++) {
+async function waitForCalls(count: number, timeoutMs = 500) {
+  const iterations = Math.ceil(timeoutMs / 10)
+  for (let i = 0; i < iterations; i++) {
     if (fetchMock.mock.calls.length >= count) return
     await new Promise((resolve) => setTimeout(resolve, 10))
   }
@@ -51,6 +52,7 @@ beforeEach(() => {
     relaySecret: "test-secret",
     hostname: "127.0.0.1",
     port: 4096,
+    permissionDelayMs: 200,
   })
 })
 
@@ -103,13 +105,63 @@ describe("push relay event mapping", () => {
     expect(callBody()?.eventType).toBe("error")
   })
 
-  test("relays permission prompts", async () => {
+  test("relays permission prompts after delay when not replied", async () => {
     emit("permission.asked", {
+      id: "per_unreplied",
       sessionID: "ses_permission",
     })
 
-    await waitForCalls(1)
+    // should NOT fire immediately
+    await new Promise((resolve) => setTimeout(resolve, 40))
+    expect(fetchMock.mock.calls.length).toBe(0)
+
+    // should fire after the permission delay (200ms in tests)
+    await waitForCalls(1, 500)
     expect(callBody()?.eventType).toBe("permission")
+  })
+
+  test("cancels permission notification when replied before delay", async () => {
+    emit("permission.asked", {
+      id: "per_auto_approved",
+      sessionID: "ses_auto",
+    })
+
+    // reply arrives quickly (simulating web UI auto-approve)
+    await new Promise((resolve) => setTimeout(resolve, 5))
+    emit("permission.replied", {
+      sessionID: "ses_auto",
+      requestID: "per_auto_approved",
+      reply: "once",
+    })
+
+    // wait past the delay window — notification should never fire
+    await new Promise((resolve) => setTimeout(resolve, 500))
+    expect(fetchMock.mock.calls.length).toBe(0)
+  })
+
+  test("cancels repeated permission updates when replied", async () => {
+    emit("permission.asked", {
+      id: "per_updated",
+      sessionID: "ses_updated",
+    })
+
+    await new Promise((resolve) => setTimeout(resolve, 100))
+
+    emit("permission.asked", {
+      id: "per_updated",
+      sessionID: "ses_updated",
+      permission: "updated",
+    })
+
+    await new Promise((resolve) => setTimeout(resolve, 5))
+    emit("permission.replied", {
+      sessionID: "ses_updated",
+      requestID: "per_updated",
+      reply: "once",
+    })
+
+    await new Promise((resolve) => setTimeout(resolve, 500))
+    expect(fetchMock.mock.calls.length).toBe(0)
   })
 
   test("does not relay subagent completion events", async () => {
@@ -143,10 +195,11 @@ describe("push relay event mapping", () => {
     created("ses_subagent", "ses_root")
 
     emit("permission.asked", {
+      id: "per_subagent_perm",
       sessionID: "ses_subagent",
     })
 
-    await waitForCalls(1)
+    await waitForCalls(1, 500)
     expect(callBody()?.eventType).toBe("permission")
     expect(callBody()?.sessionID).toBe("ses_root")
   })

@@ -20,6 +20,7 @@ type Input = {
   hostname: string
   port: number
   advertiseHosts?: string[]
+  permissionDelayMs?: number
 }
 
 type State = {
@@ -30,6 +31,8 @@ type State = {
   seen: Map<string, number>
   parent: Map<string, string | undefined>
   gc: number
+  permissionTimers: Map<string, ReturnType<typeof setTimeout>>
+  permissionDelayMs: number
 }
 
 type Event = {
@@ -407,6 +410,53 @@ function dedupe(input: { type: Type; sessionID: string }) {
   return isDupe
 }
 
+/**
+ * Delay before sending a permission APN notification.
+ * If the permission is replied to within this window (e.g. auto-approved
+ * by the web UI, or the user is actively watching and approves manually),
+ * the notification is cancelled — avoiding phone spam for every file edit
+ * during a generation.
+ *
+ * 15 seconds gives enough time for both auto-approvals (~5ms) and a user
+ * who is actively watching the machine to act before a push fires.
+ */
+const PERMISSION_DELAY_MS = 15_000
+
+function cancelPendingPermission(event: Event) {
+  const next = state
+  if (!next) return
+  if (event.type !== "permission.replied") return
+  if (!obj(event.properties)) return
+  const requestID = str(event.properties.requestID)
+  if (!requestID) return
+  const timer = next.permissionTimers.get(requestID)
+  if (!timer) return
+  clearTimeout(timer)
+  next.permissionTimers.delete(requestID)
+  log.info("permission notification cancelled (replied before delay)", { requestID })
+}
+
+function schedulePermission(permissionID: string | undefined, input: { type: Type; sessionID: string }) {
+  const next = state
+  if (!next) return
+  const key = permissionID ?? `anon:${input.sessionID}:${Date.now()}`
+  const delayMs = next.permissionDelayMs
+  const existing = next.permissionTimers.get(key)
+  if (existing) {
+    clearTimeout(existing)
+  }
+  const timer = setTimeout(() => {
+    next.permissionTimers.delete(key)
+    void post(input)
+  }, delayMs)
+  next.permissionTimers.set(key, timer)
+  log.info("permission notification scheduled", {
+    permissionID: key,
+    sessionID: input.sessionID,
+    delayMs,
+  })
+}
+
 async function post(input: { type: Type; sessionID: string }) {
   const next = state
   if (!next) return false
@@ -494,8 +544,15 @@ export namespace PushRelay {
     }
 
     const callback = (event: { payload: Event }) => {
+      cancelPendingPermission(event.payload)
       const next = map(event.payload)
       if (!next) return
+      if (next.type === "permission") {
+        const props = event.payload.properties
+        const permissionID = obj(props) ? str(props.id) : undefined
+        schedulePermission(permissionID, next)
+        return
+      }
       void post(next)
     }
     GlobalBus.on("event", callback)
@@ -511,6 +568,8 @@ export namespace PushRelay {
       seen: new Map(),
       parent: new Map(),
       gc: 0,
+      permissionTimers: new Map(),
+      permissionDelayMs: input.permissionDelayMs ?? PERMISSION_DELAY_MS,
     }
 
     log.info("enabled", {
@@ -527,6 +586,10 @@ export namespace PushRelay {
     log.info("stopping push relay")
     state = undefined
     next.stop()
+    for (const timer of next.permissionTimers.values()) {
+      clearTimeout(timer)
+    }
+    next.permissionTimers.clear()
   }
 
   export function status() {
