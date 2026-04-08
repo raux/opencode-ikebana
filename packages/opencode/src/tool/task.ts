@@ -10,6 +10,8 @@ import { Config } from "../config/config"
 import { Permission } from "@/permission"
 import { Effect } from "effect"
 
+const id = "task"
+
 const parameters = z.object({
   description: z.string().describe("A short (3-5 words) description of the task"),
   prompt: z.string().describe("The task for the agent to perform"),
@@ -24,7 +26,7 @@ const parameters = z.object({
 })
 
 export const TaskTool = Tool.defineEffect(
-  "task",
+  id,
   Effect.gen(function* () {
     const agent = yield* Agent.Service
     const config = yield* Config.Service
@@ -35,7 +37,7 @@ export const TaskTool = Tool.defineEffect(
       if (!ctx.extra?.bypassAgentCheck) {
         yield* Effect.promise(() =>
           ctx.ask({
-            permission: "task",
+            permission: id,
             patterns: [params.subagent_type],
             always: ["*"],
             metadata: {
@@ -51,7 +53,7 @@ export const TaskTool = Tool.defineEffect(
         return yield* Effect.fail(new Error(`Unknown agent type: ${params.subagent_type} is not a valid agent type`))
       }
 
-      const canTask = next.permission.some((rule) => rule.permission === "task")
+      const canTask = next.permission.some((rule) => rule.permission === id)
       const canTodo = next.permission.some((rule) => rule.permission === "todowrite")
 
       const taskID = params.task_id
@@ -81,7 +83,7 @@ export const TaskTool = Tool.defineEffect(
                 ? []
                 : [
                     {
-                      permission: "task" as const,
+                      permission: id,
                       pattern: "*" as const,
                       action: "deny" as const,
                     },

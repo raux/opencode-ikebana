@@ -82,18 +82,10 @@ export namespace ToolRegistry {
       const config = yield* Config.Service
       const plugin = yield* Plugin.Service
 
-      const info = <T extends Tool.Info, R = never>(
-        tool: T | Effect.Effect<T, never, R>,
-      ): Effect.Effect<T, never, R> => (Effect.isEffect(tool) ? tool : Effect.succeed(tool))
-
-      const build = <T extends Tool.Info, R = never>(
-        tool: T | Effect.Effect<T, never, R>,
-      ): Effect.Effect<Tool.Def, never, R> => info(tool).pipe(Effect.flatMap(Tool.init))
-
-      const task = yield* info(TaskTool)
-      const read = yield* info(ReadTool)
-      const askInfo = yield* info(QuestionTool)
-      const todoInfo = yield* info(TodoWriteTool)
+      const task = yield* TaskTool
+      const read = yield* ReadTool
+      const question = yield* QuestionTool
+      const todo = yield* TodoWriteTool
 
       const state = yield* InstanceState.make<State>(
         Effect.fn("ToolRegistry.state")(function* (ctx) {
@@ -147,47 +139,49 @@ export namespace ToolRegistry {
           }
 
           const cfg = yield* config.get()
-          const question =
+          const questionEnabled =
             ["app", "cli", "desktop"].includes(Flag.OPENCODE_CLIENT) || Flag.OPENCODE_ENABLE_QUESTION_TOOL
 
-          const invalid = yield* build(InvalidTool)
-          const bash = yield* build(BashTool)
-          const readDef = yield* build(read)
-          const glob = yield* build(GlobTool)
-          const grep = yield* build(GrepTool)
-          const edit = yield* build(EditTool)
-          const write = yield* build(WriteTool)
-          const taskDef = yield* build(task)
-          const fetch = yield* build(WebFetchTool)
-          const todo = yield* build(todoInfo)
-          const search = yield* build(WebSearchTool)
-          const code = yield* build(CodeSearchTool)
-          const skill = yield* build(SkillTool)
-          const patch = yield* build(ApplyPatchTool)
-          const ask = yield* build(askInfo)
-          const lsp = yield* build(LspTool)
-          const plan = yield* build(PlanExitTool)
+          const tool = yield* Effect.all({
+            invalid: Tool.init(InvalidTool),
+            bash: Tool.init(BashTool),
+            read: Tool.init(read),
+            glob: Tool.init(GlobTool),
+            grep: Tool.init(GrepTool),
+            edit: Tool.init(EditTool),
+            write: Tool.init(WriteTool),
+            task: Tool.init(task),
+            fetch: Tool.init(WebFetchTool),
+            todo: Tool.init(todo),
+            search: Tool.init(WebSearchTool),
+            code: Tool.init(CodeSearchTool),
+            skill: Tool.init(SkillTool),
+            patch: Tool.init(ApplyPatchTool),
+            question: Tool.init(question),
+            lsp: Tool.init(LspTool),
+            plan: Tool.init(PlanExitTool),
+          })
 
           return {
             custom,
             builtin: [
-              invalid,
-              ...(question ? [ask] : []),
-              bash,
-              readDef,
-              glob,
-              grep,
-              edit,
-              write,
-              taskDef,
-              fetch,
-              todo,
-              search,
-              code,
-              skill,
-              patch,
-              ...(Flag.OPENCODE_EXPERIMENTAL_LSP_TOOL ? [lsp] : []),
-              ...(Flag.OPENCODE_EXPERIMENTAL_PLAN_MODE && Flag.OPENCODE_CLIENT === "cli" ? [plan] : []),
+              tool.invalid,
+              ...(questionEnabled ? [tool.question] : []),
+              tool.bash,
+              tool.read,
+              tool.glob,
+              tool.grep,
+              tool.edit,
+              tool.write,
+              tool.task,
+              tool.fetch,
+              tool.todo,
+              tool.search,
+              tool.code,
+              tool.skill,
+              tool.patch,
+              ...(Flag.OPENCODE_EXPERIMENTAL_LSP_TOOL ? [tool.lsp] : []),
+              ...(Flag.OPENCODE_EXPERIMENTAL_PLAN_MODE && Flag.OPENCODE_CLIENT === "cli" ? [tool.plan] : []),
             ],
           }
         }),
@@ -237,7 +231,7 @@ export namespace ToolRegistry {
               id: tool.id,
               description: [
                 output.description,
-                tool.id === "task" ? yield* TaskDescription(input.agent) : undefined,
+                tool.id === TaskTool.id ? yield* TaskDescription(input.agent) : undefined,
                 tool.id === SkillTool.id ? yield* SkillDescription(input.agent) : undefined,
               ]
                 .filter(Boolean)
