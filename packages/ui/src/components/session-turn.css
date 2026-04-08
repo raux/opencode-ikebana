@@ -97,6 +97,10 @@
     align-items: baseline;
     gap: 8px;
     padding-bottom: 12px;
+    position: sticky;
+    top: var(--sticky-accordion-top, 0px);
+    z-index: 20;
+    background-color: var(--background-stronger);
   }
 
   [data-slot="session-turn-diffs-label"] {
