@@ -56,11 +56,6 @@ async function pushPairQRCode(payload: z.infer<typeof PushPairPayload>) {
   return QRCode.toDataURL(pushPairLink(payload), pushPairQROptions)
 }
 
-async function pushPairQRCodePNG(payload: z.infer<typeof PushPairPayload>) {
-  const data = await pushPairQRCode(payload)
-  return Buffer.from(data.replace(/^data:image\/png;base64,/, ""), "base64")
-}
-
 const ConsoleOrgOption = z.object({
   accountID: z.string(),
   accountEmail: z.string(),
@@ -452,36 +447,6 @@ export const ExperimentalRoutes = lazy(() =>
           hosts: pair.hosts,
           qr,
         })
-      },
-    )
-    .get(
-      "/push/pair/qr",
-      describeRoute({
-        summary: "Get push relay pairing QR image",
-        description: "Render the active push relay pairing QR code as a PNG image.",
-        operationId: "experimental.push.pair.qr",
-        responses: {
-          200: {
-            description: "Push relay pairing QR image",
-            content: {
-              "image/png": {
-                schema: { type: "string", format: "binary" } as any,
-              },
-            },
-          },
-          404: {
-            description: "Push relay pairing is not enabled",
-          },
-        },
-      }),
-      async (c) => {
-        const pair = PushRelay.pair()
-        if (!pair) {
-          return c.text("Push pairing is not enabled", 404)
-        }
-
-        c.header("Content-Type", "image/png")
-        return c.body(await pushPairQRCodePNG(pair))
       },
     )
     .get(
