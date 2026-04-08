@@ -198,7 +198,8 @@ async function initialize() {
   setInitStep({ phase: "done" })
 
   if (splash) {
-    await loadingComplete.promise
+    const ok = await Promise.race([loadingComplete.promise.then(() => true), delay(2_000).then(() => false)])
+    if (!ok) logger.warn("loading window complete timed out")
     splash.close()
     splash = null
   }
