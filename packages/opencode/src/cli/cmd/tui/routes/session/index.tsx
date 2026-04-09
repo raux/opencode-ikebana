@@ -15,9 +15,9 @@ import {
 import { Dynamic } from "solid-js/web"
 import path from "path"
 import { useRoute, useRouteData } from "@tui/context/route"
-import { useEvent } from "@tui/context/event"
 import { useProject } from "@tui/context/project"
 import { useSync } from "@tui/context/sync"
+import { useEvent } from "@tui/context/event"
 import { SplitBorder } from "@tui/component/border"
 import { Spinner } from "@tui/component/spinner"
 import { selectedForeground, useTheme } from "@tui/context/theme"
@@ -118,6 +118,7 @@ export function Session() {
   const route = useRouteData("session")
   const { navigate } = useRoute()
   const sync = useSync()
+  const event = useEvent()
   const project = useProject()
   const tuiConfig = useTuiConfig()
   const kv = useKV()
@@ -175,7 +176,6 @@ export function Session() {
   const providers = createMemo(() => Model.index(sync.data.provider))
 
   const scrollAcceleration = createMemo(() => getScrollAcceleration(tuiConfig))
-  const event = useEvent()
   const toast = useToast()
   const sdk = useSDK()
 
@@ -231,7 +231,7 @@ export function Session() {
   const dialog = useDialog()
   const renderer = useRenderer()
 
-  sdk.event.on("session.status", (evt) => {
+  event.on("session.status", (evt) => {
     if (evt.properties.sessionID !== route.sessionID) return
     if (evt.properties.status.type !== "retry") return
     if (evt.properties.status.message !== SessionRetry.GO_UPSELL_MESSAGE) return
