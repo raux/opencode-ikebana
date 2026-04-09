@@ -2,7 +2,7 @@ import fs from "fs/promises"
 import path from "path"
 import { fileURLToPath } from "url"
 import z from "zod"
-import { Effect, Layer, ServiceMap } from "effect"
+import { Cause, Effect, Layer, Queue, ServiceMap, Stream } from "effect"
 import { ripgrep } from "ripgrep"
 import { makeRuntime } from "@/effect/run-service"
 import { Filesystem } from "@/util/filesystem"
@@ -115,8 +115,8 @@ export namespace Ripgrep {
 
   export interface Interface {
     readonly files: (input: FilesInput) => Effect.Effect<AsyncIterable<string>>
-    readonly tree: (input: TreeInput) => Effect.Effect<string>
-    readonly search: (input: SearchInput) => Effect.Effect<Row[]>
+    readonly tree: (input: TreeInput) => Effect.Effect<string, Error>
+    readonly search: (input: SearchInput) => Effect.Effect<Row[], Error>
   }
 
   export class Service extends ServiceMap.Service<Service, Interface>()("@opencode/Ripgrep") {}
@@ -206,14 +206,23 @@ export namespace Ripgrep {
     }
   }
 
-  async function check(cwd: string) {
-    const stat = await fs.stat(cwd).catch(() => undefined)
-    if (stat?.isDirectory()) return
-    throw Object.assign(new Error(`No such file or directory: '${cwd}'`), {
-      code: "ENOENT",
-      errno: -2,
-      path: cwd,
-    })
+  function check(cwd: string) {
+    return Effect.tryPromise({
+      try: () => fs.stat(cwd).catch(() => undefined),
+      catch: toError,
+    }).pipe(
+      Effect.flatMap((stat) =>
+        stat?.isDirectory()
+          ? Effect.void
+          : Effect.fail(
+              Object.assign(new Error(`No such file or directory: '${cwd}'`), {
+                code: "ENOENT",
+                errno: -2,
+                path: cwd,
+              }),
+            ),
+      ),
+    )
   }
 
   function filesArgs(input: FilesInput) {
@@ -252,248 +261,233 @@ export namespace Ripgrep {
       .flatMap((item) => (item.type === "match" ? [row(item.data)] : []))
   }
 
-  async function target() {
+  function target() {
     const js = new URL("./ripgrep.worker.js", import.meta.url)
-    if (await Filesystem.exists(fileURLToPath(js))) return js
-    return new URL("./ripgrep.worker.ts", import.meta.url)
+    return Effect.tryPromise({
+      try: () => Filesystem.exists(fileURLToPath(js)),
+      catch: toError,
+    }).pipe(Effect.map((exists) => (exists ? js : new URL("./ripgrep.worker.ts", import.meta.url))))
   }
 
   function worker() {
-    return target().then((file) => new Worker(file, { env: env() }))
+    return target().pipe(Effect.flatMap((file) => Effect.sync(() => new Worker(file, { env: env() }))))
   }
 
-  function queue<T>() {
-    const vals: T[] = []
-    const waits: Array<{
-      ok: (value: IteratorResult<T>) => void
-      fail: (err: unknown) => void
-    }> = []
-    let err: unknown
-    let done = false
-
-    return {
-      push(value: T) {
-        if (done || err) return
-        const item = waits.shift()
-        if (item) {
-          item.ok({ value, done: false })
-          return
-        }
-        vals.push(value)
-      },
-      fail(cause: unknown) {
-        if (done || err) return
-        err = cause
-        for (const item of waits.splice(0)) item.fail(cause)
-      },
-      end() {
-        if (done || err) return
-        done = true
-        for (const item of waits.splice(0)) item.ok({ value: undefined, done: true })
-      },
-      next(): Promise<IteratorResult<T>> {
-        if (vals.length) return Promise.resolve({ value: vals.shift()!, done: false })
-        if (err) return Promise.reject(err)
-        if (done) return Promise.resolve({ value: undefined, done: true })
-        return new Promise((ok, fail) => waits.push({ ok, fail }))
-      },
+  function drain(buf: string, chunk: unknown, push: (line: string) => void) {
+    const lines = (buf + text(chunk)).split(/\r?\n/)
+    buf = lines.pop() || ""
+    for (const line of lines) {
+      if (line) push(line)
     }
+    return buf
   }
 
-  async function searchDirect(input: SearchInput) {
-    const ret = await ripgrep(searchArgs(input), {
-      buffer: true,
-      ...opts(input.cwd),
-    })
-
-    const out = ret.stdout ?? ""
-    if (ret.code === 1) return []
-    if (ret.code !== 0 && !out.trim()) return []
-    return parse(out)
+  function fail(queue: Queue.Queue<string, Error | Cause.Done>, err: Error) {
+    Queue.failCauseUnsafe(queue, Cause.fail(err))
   }
 
-  async function searchWorker(input: SearchInput) {
-    if (input.signal?.aborted) throw abort(input.signal)
+  function searchDirect(input: SearchInput) {
+    return Effect.tryPromise({
+      try: () =>
+        ripgrep(searchArgs(input), {
+          buffer: true,
+          ...opts(input.cwd),
+        }),
+      catch: toError,
+    }).pipe(
+      Effect.flatMap((ret) => {
+        const out = ret.stdout ?? ""
+        if (ret.code === 1) return Effect.succeed([])
+        if (ret.code !== 0 && !out.trim()) return Effect.succeed([])
+        return Effect.sync(() => parse(out))
+      }),
+    )
+  }
 
-    return new Promise<Row[]>(async (resolve, reject) => {
-      const w = await worker().catch(reject)
-      if (!w) return
+  function searchWorker(input: SearchInput) {
+    if (input.signal?.aborted) return Effect.fail(abort(input.signal))
 
-      let open = true
-      const stop = () => {
-        if (!open) return
-        open = false
-        input.signal?.removeEventListener("abort", onabort)
-        w.terminate()
-      }
-      const halt = (err: unknown) => {
-        stop()
-        reject(toError(err))
-      }
-      const onabort = () => {
-        stop()
-        reject(abort(input.signal))
-      }
+    return Effect.acquireUseRelease(
+      worker(),
+      (w) =>
+        Effect.callback<Row[], Error>((resume, signal) => {
+          let open = true
+          const done = (effect: Effect.Effect<Row[], Error>) => {
+            if (!open) return
+            open = false
+            resume(effect)
+          }
+          const onabort = () => done(Effect.fail(abort(input.signal)))
 
-      w.onerror = (evt) => halt(evt.error ?? new Error(evt.message))
-      w.onmessage = (evt: MessageEvent<WorkerResult | WorkerError>) => {
-        const msg = evt.data
-        if (msg.type === "error") {
-          halt(Object.assign(new Error(msg.error.message), msg.error))
-          return
-        }
+          w.onerror = (evt) => {
+            done(Effect.fail(toError(evt.error ?? evt.message)))
+          }
+          w.onmessage = (evt: MessageEvent<WorkerResult | WorkerError>) => {
+            const msg = evt.data
+            if (msg.type === "error") {
+              done(Effect.fail(Object.assign(new Error(msg.error.message), msg.error)))
+              return
+            }
+            if (msg.code === 1) {
+              done(Effect.succeed([]))
+              return
+            }
+            if (msg.code !== 0 && !msg.stdout.trim()) {
+              done(Effect.succeed([]))
+              return
+            }
+            done(Effect.sync(() => parse(msg.stdout)))
+          }
 
-        stop()
-        if (msg.code === 1) {
-          resolve([])
-          return
-        }
-        if (msg.code !== 0 && !msg.stdout.trim()) {
-          resolve([])
-          return
-        }
-        resolve(parse(msg.stdout))
-      }
+          input.signal?.addEventListener("abort", onabort, { once: true })
+          signal.addEventListener("abort", onabort, { once: true })
+          w.postMessage({
+            kind: "search",
+            cwd: input.cwd,
+            args: searchArgs(input),
+          } satisfies Run)
 
-      input.signal?.addEventListener("abort", onabort, { once: true })
-      w.postMessage({
-        kind: "search",
-        cwd: input.cwd,
-        args: searchArgs(input),
-      } satisfies Run)
-    })
+          return Effect.sync(() => {
+            input.signal?.removeEventListener("abort", onabort)
+            signal.removeEventListener("abort", onabort)
+            w.onerror = null
+            w.onmessage = null
+          })
+        }),
+      (w) => Effect.sync(() => w.terminate()),
+    )
   }
 
   function filesDirect(input: FilesInput) {
-    const chan = queue<string>()
-    let buf = ""
-    let err = ""
+    return Stream.callback<string, Error>(
+      Effect.fnUntraced(function* (queue: Queue.Queue<string, Error | Cause.Done>) {
+        let buf = ""
+        let err = ""
 
-    const out = {
-      write(chunk: unknown) {
-        buf += text(chunk)
-        const lines = buf.split(/\r?\n/)
-        buf = lines.pop() || ""
-        for (const line of lines) {
-          if (line) chan.push(clean(line))
+        const out = {
+          write(chunk: unknown) {
+            buf = drain(buf, chunk, (line) => {
+              Queue.offerUnsafe(queue, clean(line))
+            })
+          },
         }
-      },
-    }
 
-    const stderr = {
-      write(chunk: unknown) {
-        err += text(chunk)
-      },
-    }
-
-    const run = async () => {
-      await check(input.cwd)
-      const ret = await ripgrep(filesArgs(input), {
-        stdout: out,
-        stderr,
-        ...opts(input.cwd),
-      })
-      if (buf) chan.push(clean(buf))
-      if (ret.code === 0 || ret.code === 1) {
-        chan.end()
-        return
-      }
-      chan.fail(error(err, ret.code ?? 1))
-    }
-
-    void run().catch((err) => chan.fail(err))
-
-    return {
-      async *[Symbol.asyncIterator]() {
-        while (true) {
-          const item = await chan.next()
-          if (item.done) break
-          yield item.value
+        const stderr = {
+          write(chunk: unknown) {
+            err += text(chunk)
+          },
         }
-      },
-    } satisfies AsyncIterable<string>
+
+        yield* Effect.forkScoped(
+          Effect.gen(function* () {
+            yield* check(input.cwd)
+            const ret = yield* Effect.tryPromise({
+              try: () =>
+                ripgrep(filesArgs(input), {
+                  stdout: out,
+                  stderr,
+                  ...opts(input.cwd),
+                }),
+              catch: toError,
+            })
+            if (buf) Queue.offerUnsafe(queue, clean(buf))
+            if (ret.code === 0 || ret.code === 1) {
+              Queue.endUnsafe(queue)
+              return
+            }
+            fail(queue, error(err, ret.code ?? 1))
+          }).pipe(
+            Effect.catch((err) =>
+              Effect.sync(() => {
+                fail(queue, err)
+              }),
+            ),
+          ),
+        )
+      }),
+    )
   }
 
-  async function filesWorker(input: FilesInput) {
-    if (input.signal?.aborted) throw abort(input.signal)
-
-    const chan = queue<string>()
-    const w = await worker()
-
-    let open = true
-    const stop = () => {
-      if (!open) return
-      open = false
-      input.signal?.removeEventListener("abort", onabort)
-      w.terminate()
-    }
-    const onabort = () => {
-      stop()
-      chan.fail(abort(input.signal))
-    }
-
-    w.onerror = (evt) => {
-      stop()
-      chan.fail(evt.error ?? new Error(evt.message))
-    }
-
-    w.onmessage = (evt: MessageEvent<WorkerLine | WorkerDone | WorkerError>) => {
-      const msg = evt.data
-      if (msg.type === "line") {
-        chan.push(msg.line)
-        return
-      }
-      if (msg.type === "error") {
-        stop()
-        chan.fail(Object.assign(new Error(msg.error.message), msg.error))
-        return
-      }
-
-      stop()
-      if (msg.code === 0 || msg.code === 1) {
-        chan.end()
-        return
-      }
-      chan.fail(error(msg.stderr, msg.code))
-    }
-
-    input.signal?.addEventListener("abort", onabort, { once: true })
-    w.postMessage({
-      kind: "files",
-      cwd: input.cwd,
-      args: filesArgs(input),
-    } satisfies Run)
-
-    return {
-      async *[Symbol.asyncIterator]() {
-        try {
-          while (true) {
-            const item = await chan.next()
-            if (item.done) break
-            yield item.value
-          }
-        } finally {
-          stop()
+  function filesWorker(input: FilesInput) {
+    return Stream.callback<string, Error>(
+      Effect.fnUntraced(function* (queue: Queue.Queue<string, Error | Cause.Done>) {
+        if (input.signal?.aborted) {
+          fail(queue, abort(input.signal))
+          return
         }
-      },
-    } satisfies AsyncIterable<string>
+
+        const w = yield* Effect.acquireRelease(worker(), (w) => Effect.sync(() => w.terminate()))
+        let open = true
+        const close = () => {
+          if (!open) return false
+          open = false
+          return true
+        }
+        const onabort = () => {
+          if (!close()) return
+          fail(queue, abort(input.signal))
+        }
+
+        w.onerror = (evt) => {
+          if (!close()) return
+          fail(queue, toError(evt.error ?? evt.message))
+        }
+        w.onmessage = (evt: MessageEvent<WorkerLine | WorkerDone | WorkerError>) => {
+          const msg = evt.data
+          if (msg.type === "line") {
+            if (open) Queue.offerUnsafe(queue, msg.line)
+            return
+          }
+          if (!close()) return
+          if (msg.type === "error") {
+            fail(queue, Object.assign(new Error(msg.error.message), msg.error))
+            return
+          }
+          if (msg.code === 0 || msg.code === 1) {
+            Queue.endUnsafe(queue)
+            return
+          }
+          fail(queue, error(msg.stderr, msg.code))
+        }
+
+        yield* Effect.acquireRelease(
+          Effect.sync(() => {
+            input.signal?.addEventListener("abort", onabort, { once: true })
+            w.postMessage({
+              kind: "files",
+              cwd: input.cwd,
+              args: filesArgs(input),
+            } satisfies Run)
+          }),
+          () =>
+            Effect.sync(() => {
+              input.signal?.removeEventListener("abort", onabort)
+              w.onerror = null
+              w.onmessage = null
+            }),
+        )
+      }),
+    )
   }
 
   export const layer = Layer.effect(
     Service,
     Effect.gen(function* () {
-      const files: Interface["files"] = Effect.fn("Ripgrep.files")(function* (input: FilesInput) {
+      const source = (input: FilesInput) => {
         const useWorker = !!input.signal && typeof Worker !== "undefined"
         if (!useWorker && input.signal) {
           log.warn("worker unavailable, ripgrep abort disabled")
         }
-        return yield* Effect.promise(() => (useWorker ? filesWorker(input) : Promise.resolve(filesDirect(input))))
+        return useWorker ? filesWorker(input) : filesDirect(input)
+      }
+
+      const files: Interface["files"] = Effect.fn("Ripgrep.files")(function* (input: FilesInput) {
+        return yield* Stream.toAsyncIterableEffect(source(input))
       })
 
       const tree: Interface["tree"] = Effect.fn("Ripgrep.tree")(function* (input: TreeInput) {
         log.info("tree", input)
-        const iter = yield* files({ cwd: input.cwd, signal: input.signal })
-        const list = yield* Effect.promise(() => Array.fromAsync(iter))
+        const list = Array.from(yield* source({ cwd: input.cwd, signal: input.signal }).pipe(Stream.runCollect))
 
         interface Node {
           name: string
@@ -551,7 +545,7 @@ export namespace Ripgrep {
         if (!useWorker && input.signal) {
           log.warn("worker unavailable, ripgrep abort disabled")
         }
-        return yield* Effect.promise(() => (useWorker ? searchWorker(input) : searchDirect(input)))
+        return yield* useWorker ? searchWorker(input) : searchDirect(input)
       })
 
       return Service.of({ files, tree, search })
