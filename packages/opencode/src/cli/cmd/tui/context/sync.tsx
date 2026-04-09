@@ -463,6 +463,7 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
       on(
         () => project.workspace.current(),
         () => {
+          fullSyncedSessions.clear()
           void bootstrap()
         },
       ),
