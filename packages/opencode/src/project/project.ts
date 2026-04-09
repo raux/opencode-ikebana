@@ -137,6 +137,7 @@ export namespace Project {
       const emitUpdated = (data: Info) =>
         Effect.sync(() =>
           GlobalBus.emit("event", {
+            project: data.id,
             payload: { type: Event.Updated.type, properties: data },
           }),
         )

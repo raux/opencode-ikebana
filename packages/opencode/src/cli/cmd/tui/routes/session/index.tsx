@@ -15,6 +15,8 @@ import {
 import { Dynamic } from "solid-js/web"
 import path from "path"
 import { useRoute, useRouteData } from "@tui/context/route"
+import { useEvent } from "@tui/context/event"
+import { useProject } from "@tui/context/project"
 import { useSync } from "@tui/context/sync"
 import { SplitBorder } from "@tui/component/border"
 import { Spinner } from "@tui/component/spinner"
@@ -116,6 +118,7 @@ export function Session() {
   const route = useRouteData("session")
   const { navigate } = useRoute()
   const sync = useSync()
+  const project = useProject()
   const tuiConfig = useTuiConfig()
   const kv = useKV()
   const { theme } = useTheme()
@@ -172,10 +175,17 @@ export function Session() {
   const providers = createMemo(() => Model.index(sync.data.provider))
 
   const scrollAcceleration = createMemo(() => getScrollAcceleration(tuiConfig))
+  const event = useEvent()
+  const toast = useToast()
+  const sdk = useSDK()
 
   createEffect(async () => {
-    await sync.session
-      .sync(route.sessionID)
+    await sdk.client.session
+      .get({ sessionID: route.sessionID }, { throwOnError: true })
+      .then((x) => {
+        project.workspace.set(x.data?.workspaceID)
+      })
+      .then(() => sync.session.sync(route.sessionID))
       .then(() => {
         if (scroll) scroll.scrollBy(100_000)
       })
@@ -189,13 +199,10 @@ export function Session() {
       })
   })
 
-  const toast = useToast()
-  const sdk = useSDK()
-
   // Handle initial prompt from fork
   let seeded = false
   let lastSwitch: string | undefined = undefined
-  sdk.event.on("message.part.updated", (evt) => {
+  event.on("message.part.updated", (evt) => {
     const part = evt.properties.part
     if (part.type !== "tool") return
     if (part.sessionID !== route.sessionID) return
@@ -1791,7 +1798,7 @@ function Bash(props: ToolProps<typeof BashTool>) {
     const workdir = props.input.workdir
     if (!workdir || workdir === ".") return undefined
 
-    const base = sync.data.path.directory
+    const base = sync.path.directory
     if (!base) return undefined
 
     const absolute = path.resolve(base, workdir)
