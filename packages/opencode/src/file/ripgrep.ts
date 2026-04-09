@@ -186,7 +186,7 @@ export namespace Ripgrep {
   }
 
   function clean(file: string) {
-    return file.replace(/^\.[\\/]/, "")
+    return path.normalize(file.replace(/^\.[\\/]/, ""))
   }
 
   function row(data: Row): Row {
