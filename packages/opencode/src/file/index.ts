@@ -344,6 +344,7 @@ export namespace File {
     Service,
     Effect.gen(function* () {
       const appFs = yield* AppFileSystem.Service
+      const rg = yield* Ripgrep.Service
 
       const state = yield* InstanceState.make<State>(
         Effect.fn("File.state")(() =>
@@ -382,7 +383,9 @@ export namespace File {
 
           next.dirs = Array.from(dirs).toSorted()
         } else {
-          const files = yield* Effect.promise(() => Array.fromAsync(Ripgrep.files({ cwd: Instance.directory })))
+          const files = yield* rg
+            .files({ cwd: Instance.directory })
+            .pipe(Effect.flatMap((iter) => Effect.promise(() => Array.fromAsync(iter))))
           const seen = new Set<string>()
           for (const file of files) {
             next.files.push(file)
@@ -660,7 +663,7 @@ export namespace File {
     }),
   )
 
-  export const defaultLayer = layer.pipe(Layer.provide(AppFileSystem.defaultLayer))
+  export const defaultLayer = layer.pipe(Layer.provide(Ripgrep.defaultLayer), Layer.provide(AppFileSystem.defaultLayer))
 
   const { runPromise } = makeRuntime(Service, defaultLayer)
 
