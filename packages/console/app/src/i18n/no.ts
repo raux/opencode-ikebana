@@ -252,9 +252,10 @@ export const dict = {
   "go.title": "OpenCode Go | Rimelige kodemodeller for alle",
   "go.meta.description":
     "Go starter på $5 for den første måneden, deretter $10/måned, med sjenerøse 5-timers forespørselsgrenser for GLM-5.1, GLM-5, Kimi K2.5, MiMo-V2-Pro, MiMo-V2-Omni, MiniMax M2.5 og MiniMax M2.7.",
+  "go.banner.text": "GLM-5.1 — få 2x bruksgrenser frem til 20. april",
   "go.hero.title": "Rimelige kodemodeller for alle",
   "go.hero.body":
-    "Go bringer agent-koding til programmerere over hele verden. Med rause grenser og pålitelig tilgang til de mest kapable åpen kildekode-modellene, kan du bygge med kraftige agenter uten å bekymre deg for kostnader eller tilgjengelighet.",
+    "Go bringer agent-koding til programmerere over hele verden, med rause grenser og pålitelig tilgang til de mest kapable åpen kildekode-modellene, levert fullt ut og uten kvantisering, slik at du kan bygge med kraftige agenter uten å bekymre deg for kostnader eller tilgjengelighet.",
 
   "go.cta.start": "Abonner på Go",
   "go.cta.template": "{{text}} {{price}}",

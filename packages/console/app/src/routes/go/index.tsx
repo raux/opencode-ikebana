@@ -45,7 +45,7 @@ function LimitsGraph(props: { href: string }) {
 
   const free = 200
   const models = [
-    { id: "glm-5.1", name: "GLM-5.1", req: 880, d: "100ms" },
+    { id: "glm-5.1", name: "GLM-5.1", req: 1760, base: 880, bonus: 880, d: "100ms" },
     { id: "glm-5", name: "GLM-5", req: 1150, d: "120ms" },
     { id: "mimo-v2-pro", name: "MiMo-V2-Pro", req: 1290, d: "150ms" },
     { id: "kimi", name: "Kimi K2.5", req: 1850, d: "240ms" },
@@ -138,12 +138,23 @@ function LimitsGraph(props: { href: string }) {
                   <rect
                     x={left}
                     y={gy(i()) - bh / 2}
-                    width={Math.max(0, x(ratio(m.req)) - left)}
+                    width={Math.max(0, m.bonus ? (x(ratio(m.req)) - left) / 2 : x(ratio(m.req)) - left)}
                     height={bh}
                     data-bar
                     data-kind="go"
                     data-model={m.id}
                   />
+                  {m.bonus && (
+                    <rect
+                      x={left + Math.max(0, (x(ratio(m.req)) - left) / 2)}
+                      y={gy(i()) - bh / 2}
+                      width={Math.max(0, (x(ratio(m.req)) - left) / 2)}
+                      height={bh}
+                      data-bar
+                      data-kind="bonus"
+                      data-model={m.id}
+                    />
+                  )}
                 </g>
               )}
             </For>
@@ -182,7 +193,10 @@ function LimitsGraph(props: { href: string }) {
                 data-model={m.id}
                 style={{ "--x": px(x(ratio(m.req))), "--y": py(gy(i())), "--d": m.d } as any}
               >
-                <span data-value>{m.req.toLocaleString()}</span>
+                <span data-copy>
+                  <span data-value>{m.req.toLocaleString()}</span>
+                  {m.bonus && <span data-note>{`(${m.base!.toLocaleString()} × 2)`}</span>}
+                </span>
                 <span data-name>{m.name}</span>
               </span>
             )}
@@ -233,6 +247,13 @@ export default function Home() {
 
         <div data-component="content">
           <section data-component="hero">
+            <div data-component="desktop-app-banner">
+              <span data-slot="badge">{i18n.t("home.banner.badge")}</span>
+              <div data-slot="content">
+                <span data-slot="text">{i18n.t("go.banner.text")}</span>
+              </div>
+            </div>
+
             <div data-slot="hero-copy">
               <img data-slot="zen logo light" src={goLogoLight} alt="" />
               <img data-slot="zen logo dark" src={goLogoDark} alt="" />

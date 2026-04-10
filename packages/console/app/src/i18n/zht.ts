@@ -242,9 +242,10 @@ export const dict = {
   "go.title": "OpenCode Go | 低成本全民編碼模型",
   "go.meta.description":
     "Go 首月 $5，之後 $10/月，提供對 GLM-5.1、GLM-5、Kimi K2.5、MiMo-V2-Pro、MiMo-V2-Omni、MiniMax M2.5 和 MiniMax M2.7 的 5 小時充裕請求額度。",
+  "go.banner.text": "GLM-5.1 限時優惠！4 月 20 日前可享 2 倍使用額度",
   "go.hero.title": "低成本全民編碼模型",
   "go.hero.body":
-    "Go 將代理編碼帶給全世界的程式設計師。提供寬裕的限額以及對最強大開源模型的穩定存取，讓你可以使用強大的代理進行構建，而無需擔心成本或可用性。",
+    "Go 將代理編碼帶給全世界的程式設計師，提供充裕的使用額度，並可穩定使用具備完整能力且未經量化的最強開源模型，讓您可以利用強大的代理進行構建，而無需擔心成本或可用性。",
 
   "go.cta.start": "訂閱 Go",
   "go.cta.template": "{{text}} {{price}}",

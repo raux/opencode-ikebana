@@ -255,9 +255,10 @@ export const dict = {
   "go.title": "OpenCode Go | Modelos de programación de bajo coste para todos",
   "go.meta.description":
     "Go comienza en $5 el primer mes, luego 10 $/mes, con generosos límites de solicitudes de 5 horas para GLM-5.1, GLM-5, Kimi K2.5, MiMo-V2-Pro, MiMo-V2-Omni, MiniMax M2.5 y MiniMax M2.7.",
+  "go.banner.text": "GLM-5.1 — obtén 2x límites de uso hasta el 20 de abril",
   "go.hero.title": "Modelos de programación de bajo coste para todos",
   "go.hero.body":
-    "Go lleva la programación agéntica a programadores de todo el mundo. Ofrece límites generosos y acceso fiable a los modelos de código abierto más capaces, para que puedas crear con agentes potentes sin preocuparte por el coste o la disponibilidad.",
+    "Go lleva la programación agéntica a programadores de todo el mundo y ofrece límites generosos y acceso fiable a los modelos open source más capaces, sin cuantización y entregados con todas sus capacidades, para que puedas crear con agentes potentes sin preocuparte por el coste o la disponibilidad.",
 
   "go.cta.start": "Suscribirse a Go",
   "go.cta.template": "{{text}} {{price}}",

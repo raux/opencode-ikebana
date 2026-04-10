@@ -306,7 +306,7 @@ body {
   [data-component="hero"] {
     display: flex;
     flex-direction: column;
-    padding: calc(var(--vertical-padding) * 2) var(--padding);
+    padding: calc(var(--vertical-padding) * 1.5) var(--padding);
 
     [data-slot="zen logo dark"] {
       display: none;
@@ -323,6 +323,33 @@ body {
       [data-slot="zen logo dark"] {
         display: block;
       }
+    }
+  }
+
+  [data-component="desktop-app-banner"] {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 40px;
+
+    [data-slot="badge"] {
+      background: var(--color-background-strong);
+      color: var(--color-text-inverted);
+      font-weight: 500;
+      padding: 4px 8px;
+      line-height: 1;
+      flex-shrink: 0;
+    }
+
+    [data-slot="content"] {
+      display: flex;
+      align-items: center;
+      gap: 1ch;
+    }
+
+    [data-slot="text"] {
+      color: var(--color-text-strong);
+      line-height: 1.4;
     }
   }
 
@@ -441,6 +468,7 @@ body {
 
       [data-component="limit-graph"] {
         --bar-go: #f7ff00;
+        --bar-go-bonus: var(--color-go-2);
       }
     }
 
@@ -452,6 +480,7 @@ body {
       background: transparent;
       padding: 58px var(--padding) 56px;
       --bar-go: var(--color-go-2);
+      --bar-go-bonus: color-mix(in srgb, var(--color-go-2) 66%, white);
 
       @media (max-width: 60rem) {
         width: 50%;
@@ -539,10 +568,23 @@ body {
           white-space: nowrap;
         }
 
+        [data-copy] {
+          display: inline-flex;
+          align-items: baseline;
+          gap: 8px;
+          white-space: nowrap;
+        }
+
         [data-value] {
           color: var(--color-text-strong);
           font-weight: 600;
           white-space: nowrap;
+        }
+
+        [data-note] {
+          color: color-mix(in srgb, var(--color-text-weak) 82%, var(--color-text-strong));
+          white-space: nowrap;
+          font-size: 12px;
         }
       }
 
@@ -621,6 +663,10 @@ body {
 
       [data-bar][data-kind="free"] {
         fill: var(--color-text-strong);
+      }
+
+      [data-bar][data-kind="bonus"] {
+        fill: var(--bar-go-bonus);
       }
 
       [data-val] {

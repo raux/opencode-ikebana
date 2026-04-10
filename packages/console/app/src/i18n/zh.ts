@@ -242,9 +242,10 @@ export const dict = {
   "go.title": "OpenCode Go | 人人可用的低成本编程模型",
   "go.meta.description":
     "Go 首月 $5，之后 $10/月，提供对 GLM-5.1、GLM-5、Kimi K2.5、MiMo-V2-Pro、MiMo-V2-Omni、MiniMax M2.5 和 MiniMax M2.7 的 5 小时充裕请求额度。",
+  "go.banner.text": "GLM-5.1 限时优惠！4 月 20 日前可享 2 倍使用额度",
   "go.hero.title": "人人可用的低成本编程模型",
   "go.hero.body":
-    "Go 将代理编程带给全世界的程序员。提供充裕的限额和对最强大的开源模型的可靠访问，让您可以利用强大的代理进行构建，而无需担心成本或可用性。",
+    "Go 将代理编程带给全世界的程序员，提供充裕的使用额度，并可稳定使用具备完整能力且未经量化的最强开源模型，让您可以利用强大的代理进行构建，而无需担心成本或可用性。",
 
   "go.cta.start": "订阅 Go",
   "go.cta.template": "{{text}} {{price}}",
