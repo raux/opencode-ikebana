@@ -385,7 +385,9 @@ export namespace LLM {
         ],
       }),
       experimental_telemetry: {
-        isEnabled: cfg.experimental?.openTelemetry,
+        isEnabled: cfg.experimental?.openTelemetry || !!Flag.OTEL_EXPORTER_OTLP_ENDPOINT,
+        recordInputs: true,
+        recordOutputs: true,
         metadata: {
           userId: cfg.username ?? "unknown",
           sessionId: input.sessionID,
