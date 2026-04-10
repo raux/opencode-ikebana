@@ -33,6 +33,7 @@ import { SessionStatus } from "../../src/session/status"
 import { Skill } from "../../src/skill"
 import { Shell } from "../../src/shell/shell"
 import { Snapshot } from "../../src/snapshot"
+import { TaskTool } from "../../src/tool/task"
 import { ToolRegistry } from "../../src/tool/registry"
 import { Truncate } from "../../src/tool/truncate"
 import { Log } from "../../src/util/log"
@@ -727,23 +728,31 @@ it.live(
         Effect.gen(function* () {
           const ready = defer<void>()
           const aborted = defer<void>()
-          const registry = yield* ToolRegistry.Service
-          const { task } = yield* registry.named()
-          const original = task.execute
-          task.execute = async (_args, ctx) => {
-            ready.resolve()
-            ctx.abort.addEventListener("abort", () => aborted.resolve(), { once: true })
-            await new Promise<void>(() => {})
+          const original = TaskTool.build
+          TaskTool.build = ((runtime: Parameters<typeof TaskTool.build>[0]) => {
+            const base = original(runtime)
             return {
-              title: "",
-              metadata: {
-                sessionId: SessionID.make("task"),
-                model: ref,
+              id: base.id,
+              async init() {
+                const next = await base.init()
+                next.execute = async (_args: any, ctx: any) => {
+                  ready.resolve()
+                  ctx.abort.addEventListener("abort", () => aborted.resolve(), { once: true })
+                  await new Promise<void>(() => {})
+                  return {
+                    title: "",
+                    metadata: {
+                      sessionId: SessionID.make("task"),
+                      model: ref,
+                    },
+                    output: "",
+                  }
+                }
+                return next
               },
-              output: "",
             }
-          }
-          yield* Effect.addFinalizer(() => Effect.sync(() => void (task.execute = original)))
+          }) as typeof TaskTool.build
+          yield* Effect.addFinalizer(() => Effect.sync(() => void (TaskTool.build = original)))
 
           const { prompt, chat } = yield* boot()
           const msg = yield* user(chat.id, "hello")

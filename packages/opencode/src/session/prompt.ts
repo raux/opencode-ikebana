@@ -47,6 +47,7 @@ import { Cause, Effect, Exit, Layer, Option, Scope, ServiceMap } from "effect"
 import { InstanceState } from "@/effect/instance-state"
 import { makeRuntime } from "@/effect/run-service"
 import { TaskTool } from "@/tool/task"
+import { Config } from "@/config/config"
 import { SessionRunState } from "./run-state"
 
 // @ts-ignore
@@ -88,6 +89,7 @@ export namespace SessionPrompt {
       const compaction = yield* SessionCompaction.Service
       const plugin = yield* Plugin.Service
       const commands = yield* Command.Service
+      const config = yield* Config.Service
       const permission = yield* Permission.Service
       const fsys = yield* AppFileSystem.Service
       const mcp = yield* MCP.Service
@@ -139,6 +141,17 @@ export namespace SessionPrompt {
         )
         return parts
       })
+
+      let prompt!: Interface["prompt"]
+
+      const taskTool = () =>
+        TaskTool.build({
+          agent: agents,
+          config,
+          cancel: SessionPrompt.cancel,
+          resolvePromptParts: SessionPrompt.resolvePromptParts,
+          prompt: SessionPrompt.prompt,
+        })
 
       const title = Effect.fn("SessionPrompt.ensureTitle")(function* (input: {
         session: Session.Info
@@ -391,6 +404,7 @@ NOTE: At any point in time through this workflow you should feel free to ask the
           providerID: input.model.providerID,
           agent: input.agent,
         })) {
+          const toolDef = item.id === TaskTool.id ? yield* Tool.init(taskTool()) : item
           const schema = ProviderTransform.schema(input.model, z.toJSONSchema(item.parameters))
           tools[item.id] = tool({
             id: item.id as any,
@@ -405,7 +419,7 @@ NOTE: At any point in time through this workflow you should feel free to ask the
                     { tool: item.id, sessionID: ctx.sessionID, callID: ctx.callID },
                     { args },
                   )
-                  const result = yield* Effect.promise(() => item.execute(args, ctx))
+                  const result = yield* Effect.promise(() => toolDef.execute(args, ctx))
                   const output = {
                     ...result,
                     attachments: result.attachments?.map((attachment) => ({
@@ -521,7 +535,6 @@ NOTE: At any point in time through this workflow you should feel free to ask the
       }) {
         const { task, model, lastUser, sessionID, session, msgs } = input
         const ctx = yield* InstanceState.context
-        const { task: taskTool } = yield* registry.named()
         const taskModel = task.model ? yield* getModel(task.model.providerID, task.model.modelID, sessionID) : model
         const assistantMessage: MessageV2.Assistant = yield* sessions.updateMessage({
           id: MessageID.ascending(),
@@ -578,8 +591,9 @@ NOTE: At any point in time through this workflow you should feel free to ask the
         }
 
         let error: Error | undefined
+        const taskDef = yield* Tool.init(taskTool())
         const result = yield* Effect.promise((signal) =>
-          taskTool
+          taskDef
             .execute(taskArgs, {
               agent: task.agent,
               messageID: assistantMessage.id,
@@ -1267,26 +1281,24 @@ NOTE: At any point in time through this workflow you should feel free to ask the
         return { info, parts }
       }, Effect.scoped)
 
-      const prompt: (input: PromptInput) => Effect.Effect<MessageV2.WithParts> = Effect.fn("SessionPrompt.prompt")(
-        function* (input: PromptInput) {
-          const session = yield* sessions.get(input.sessionID)
-          yield* revert.cleanup(session)
-          const message = yield* createUserMessage(input)
-          yield* sessions.touch(input.sessionID)
+      prompt = Effect.fn("SessionPrompt.prompt")(function* (input: PromptInput) {
+        const session = yield* sessions.get(input.sessionID)
+        yield* revert.cleanup(session)
+        const message = yield* createUserMessage(input)
+        yield* sessions.touch(input.sessionID)
 
-          const permissions: Permission.Ruleset = []
-          for (const [t, enabled] of Object.entries(input.tools ?? {})) {
-            permissions.push({ permission: t, action: enabled ? "allow" : "deny", pattern: "*" })
-          }
-          if (permissions.length > 0) {
-            session.permission = permissions
-            yield* sessions.setPermission({ sessionID: session.id, permission: permissions })
-          }
+        const permissions: Permission.Ruleset = []
+        for (const [t, enabled] of Object.entries(input.tools ?? {})) {
+          permissions.push({ permission: t, action: enabled ? "allow" : "deny", pattern: "*" })
+        }
+        if (permissions.length > 0) {
+          session.permission = permissions
+          yield* sessions.setPermission({ sessionID: session.id, permission: permissions })
+        }
 
-          if (input.noReply === true) return message
-          return yield* loop({ sessionID: input.sessionID })
-        },
-      )
+        if (input.noReply === true) return message
+        return yield* loop({ sessionID: input.sessionID })
+      })
 
       const lastAssistant = (sessionID: SessionID) =>
         Effect.promise(async () => {
@@ -1667,28 +1679,30 @@ NOTE: At any point in time through this workflow you should feel free to ask the
   )
 
   const defaultLayer = Layer.suspend(() =>
-    layer.pipe(
-      Layer.provide(SessionRunState.defaultLayer),
-      Layer.provide(SessionStatus.defaultLayer),
-      Layer.provide(SessionCompaction.defaultLayer),
-      Layer.provide(SessionProcessor.defaultLayer),
-      Layer.provide(Command.defaultLayer),
-      Layer.provide(Permission.defaultLayer),
-      Layer.provide(MCP.defaultLayer),
-      Layer.provide(LSP.defaultLayer),
-      Layer.provide(FileTime.defaultLayer),
-      Layer.provide(ToolRegistry.defaultLayer),
-      Layer.provide(Truncate.defaultLayer),
-      Layer.provide(Provider.defaultLayer),
-      Layer.provide(Instruction.defaultLayer),
-      Layer.provide(AppFileSystem.defaultLayer),
-      Layer.provide(Plugin.defaultLayer),
-      Layer.provide(Session.defaultLayer),
-      Layer.provide(SessionRevert.defaultLayer),
-      Layer.provide(Agent.defaultLayer),
-      Layer.provide(Bus.layer),
-      Layer.provide(CrossSpawnSpawner.defaultLayer),
-    ),
+    layer
+      .pipe(
+        Layer.provide(SessionRunState.defaultLayer),
+        Layer.provide(SessionStatus.defaultLayer),
+        Layer.provide(SessionCompaction.defaultLayer),
+        Layer.provide(SessionProcessor.defaultLayer),
+        Layer.provide(Command.defaultLayer),
+        Layer.provide(Permission.defaultLayer),
+        Layer.provide(MCP.defaultLayer),
+        Layer.provide(LSP.defaultLayer),
+        Layer.provide(FileTime.defaultLayer),
+        Layer.provide(ToolRegistry.defaultLayer),
+        Layer.provide(Truncate.defaultLayer),
+        Layer.provide(Provider.defaultLayer),
+        Layer.provide(Config.defaultLayer),
+        Layer.provide(Instruction.defaultLayer),
+        Layer.provide(AppFileSystem.defaultLayer),
+        Layer.provide(Plugin.defaultLayer),
+        Layer.provide(Session.defaultLayer),
+        Layer.provide(SessionRevert.defaultLayer),
+        Layer.provide(Agent.defaultLayer),
+        Layer.provide(Bus.layer),
+      )
+      .pipe(Layer.provide(CrossSpawnSpawner.defaultLayer)),
   )
   const { runPromise } = makeRuntime(Service, defaultLayer)
 

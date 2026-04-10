@@ -43,6 +43,7 @@ import { AppFileSystem } from "../filesystem"
 import { Agent } from "../agent/agent"
 import { Skill } from "../skill"
 import { Permission } from "@/permission"
+import type { TaskMetadata } from "./task"
 
 export namespace ToolRegistry {
   const log = Log.create({ service: "tool.registry" })
@@ -94,7 +95,7 @@ export namespace ToolRegistry {
       const agents = yield* Agent.Service
       const skill = yield* Skill.Service
 
-      const task = yield* TaskTool
+      const task: Tool.Info<typeof TaskTool.parameters, TaskMetadata> = yield* TaskTool
       const read = yield* ReadTool
       const question = yield* QuestionTool
       const todo = yield* TodoWriteTool

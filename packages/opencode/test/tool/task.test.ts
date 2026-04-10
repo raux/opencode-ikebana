@@ -10,6 +10,7 @@ import { SessionPrompt } from "../../src/session/prompt"
 import { MessageID, PartID } from "../../src/session/schema"
 import { ModelID, ProviderID } from "../../src/provider/schema"
 import { TaskTool } from "../../src/tool/task"
+import { Tool } from "../../src/tool/tool"
 import { ToolRegistry } from "../../src/tool/registry"
 import { provideTmpdirInstance } from "../fixture/fixture"
 import { testEffect } from "../lib/effect"
@@ -22,6 +23,15 @@ const ref = {
   providerID: ProviderID.make("test"),
   modelID: ModelID.make("test-model"),
 }
+
+const bindTask = (agent: Agent.Interface, config: Config.Interface) =>
+  TaskTool.build({
+    agent,
+    config,
+    cancel: (sessionID) => SessionPrompt.cancel(sessionID),
+    resolvePromptParts: (template) => SessionPrompt.resolvePromptParts(template),
+    prompt: (input) => SessionPrompt.prompt(input),
+  })
 
 const it = testEffect(
   Layer.mergeAll(
@@ -175,11 +185,12 @@ describe("tool.task", () => {
   it.live("execute resumes an existing task session from task_id", () =>
     provideTmpdirInstance(() =>
       Effect.gen(function* () {
+        const agent = yield* Agent.Service
+        const config = yield* Config.Service
         const sessions = yield* Session.Service
         const { chat, assistant } = yield* seed()
         const child = yield* sessions.create({ parentID: chat.id, title: "Existing child" })
-        const tool = yield* TaskTool
-        const def = yield* Effect.promise(() => tool.init())
+        const def = yield* Tool.init(bindTask(agent, config))
         const resolve = SessionPrompt.resolvePromptParts
         const prompt = SessionPrompt.prompt
         let seen: Parameters<typeof SessionPrompt.prompt>[0] | undefined
@@ -229,9 +240,10 @@ describe("tool.task", () => {
   it.live("execute asks by default and skips checks when bypassed", () =>
     provideTmpdirInstance(() =>
       Effect.gen(function* () {
+        const agent = yield* Agent.Service
+        const config = yield* Config.Service
         const { chat, assistant } = yield* seed()
-        const tool = yield* TaskTool
-        const def = yield* Effect.promise(() => tool.init())
+        const def = yield* Tool.init(bindTask(agent, config))
         const resolve = SessionPrompt.resolvePromptParts
         const prompt = SessionPrompt.prompt
         const calls: unknown[] = []
@@ -288,10 +300,11 @@ describe("tool.task", () => {
   it.live("execute creates a child when task_id does not exist", () =>
     provideTmpdirInstance(() =>
       Effect.gen(function* () {
+        const agent = yield* Agent.Service
+        const config = yield* Config.Service
         const sessions = yield* Session.Service
         const { chat, assistant } = yield* seed()
-        const tool = yield* TaskTool
-        const def = yield* Effect.promise(() => tool.init())
+        const def = yield* Tool.init(bindTask(agent, config))
         const resolve = SessionPrompt.resolvePromptParts
         const prompt = SessionPrompt.prompt
         let seen: Parameters<typeof SessionPrompt.prompt>[0] | undefined
@@ -342,10 +355,11 @@ describe("tool.task", () => {
     provideTmpdirInstance(
       () =>
         Effect.gen(function* () {
+          const agent = yield* Agent.Service
+          const config = yield* Config.Service
           const sessions = yield* Session.Service
           const { chat, assistant } = yield* seed()
-          const tool = yield* TaskTool
-          const def = yield* Effect.promise(() => tool.init())
+          const def = yield* Tool.init(bindTask(agent, config))
           const resolve = SessionPrompt.resolvePromptParts
           const prompt = SessionPrompt.prompt
           let seen: Parameters<typeof SessionPrompt.prompt>[0] | undefined
