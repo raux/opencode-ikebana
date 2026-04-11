@@ -34,6 +34,7 @@ import { FetchHttpClient, HttpClient } from "effect/unstable/http"
 import { ChildProcessSpawner } from "effect/unstable/process/ChildProcessSpawner"
 import * as CrossSpawnSpawner from "@/effect/cross-spawn-spawner"
 import { Ripgrep } from "../file/ripgrep"
+import { Format } from "../format"
 import { InstanceState } from "@/effect/instance-state"
 import { makeRuntime } from "@/effect/run-service"
 import { Env } from "../env"
@@ -91,6 +92,7 @@ export namespace ToolRegistry {
     | HttpClient.HttpClient
     | ChildProcessSpawner
     | Ripgrep.Service
+    | Format.Service
   > = Layer.effect(
     Service,
     Effect.gen(function* () {
@@ -110,6 +112,11 @@ export namespace ToolRegistry {
       const bash = yield* BashTool
       const codesearch = yield* CodeSearchTool
       const globtool = yield* GlobTool
+      const writetool = yield* WriteTool
+      const edit = yield* EditTool
+      const greptool = yield* GrepTool
+      const patchtool = yield* ApplyPatchTool
+      const skilltool = yield* SkillTool
 
       const state = yield* InstanceState.make<State>(
         Effect.fn("ToolRegistry.state")(function* (ctx) {
@@ -171,16 +178,16 @@ export namespace ToolRegistry {
             bash: Tool.init(bash),
             read: Tool.init(read),
             glob: Tool.init(globtool),
-            grep: Tool.init(GrepTool),
-            edit: Tool.init(EditTool),
-            write: Tool.init(WriteTool),
+            grep: Tool.init(greptool),
+            edit: Tool.init(edit),
+            write: Tool.init(writetool),
             task: Tool.init(task),
             fetch: Tool.init(webfetch),
             todo: Tool.init(todo),
             search: Tool.init(websearch),
             code: Tool.init(codesearch),
-            skill: Tool.init(SkillTool),
-            patch: Tool.init(ApplyPatchTool),
+            skill: Tool.init(skilltool),
+            patch: Tool.init(patchtool),
             question: Tool.init(question),
             lsp: Tool.init(lsptool),
             plan: Tool.init(plan),
@@ -322,6 +329,7 @@ export namespace ToolRegistry {
       Layer.provide(Instruction.defaultLayer),
       Layer.provide(AppFileSystem.defaultLayer),
       Layer.provide(FetchHttpClient.layer),
+      Layer.provide(Format.defaultLayer),
       Layer.provide(CrossSpawnSpawner.defaultLayer),
       Layer.provide(Ripgrep.defaultLayer),
     ),
