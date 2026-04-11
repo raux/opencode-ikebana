@@ -366,11 +366,12 @@ export namespace Session {
   const db = <T>(fn: (d: Parameters<typeof Database.use>[0] extends (trx: infer D) => any ? D : never) => T) =>
     Effect.sync(() => Database.use(fn))
 
-  export const layer: Layer.Layer<Service, never, Bus.Service | Storage.Service> = Layer.effect(
+  export const layer: Layer.Layer<Service, never, Bus.Service | Storage.Service | SyncEvent.Service> = Layer.effect(
     Service,
     Effect.gen(function* () {
       const bus = yield* Bus.Service
       const storage = yield* Storage.Service
+      const sync = yield* SyncEvent.Service
 
       const createNext = Effect.fn("Session.createNext")(function* (input: {
         id?: SessionID
@@ -398,7 +399,7 @@ export namespace Session {
         }
         log.info("created", result)
 
-        yield* Effect.sync(() => SyncEvent.run(Event.Created, { sessionID: result.id, info: result }))
+        yield* sync.run(Event.Created, { sessionID: result.id, info: result })
 
         if (!Flag.OPENCODE_EXPERIMENTAL_WORKSPACES) {
           // This only exist for backwards compatibility. We should not be
@@ -446,10 +447,12 @@ export namespace Session {
             Effect.catchCause(() => Effect.succeed(false)),
           )
 
-          yield* Effect.sync(() => {
-            SyncEvent.run(Event.Deleted, { sessionID, info: session }, { publish: hasInstance })
-            SyncEvent.remove(sessionID)
-          })
+          if (hasInstance) {
+            yield* sync.run(Event.Deleted, { sessionID, info: session }, { publish: true })
+          } else {
+            yield* Effect.sync(() => SyncEvent.run(Event.Deleted, { sessionID, info: session }, { publish: false }))
+          }
+          yield* sync.remove(sessionID)
         } catch (e) {
           log.error(e)
         }
@@ -457,19 +460,17 @@ export namespace Session {
 
       const updateMessage = <T extends MessageV2.Info>(msg: T): Effect.Effect<T> =>
         Effect.gen(function* () {
-          yield* Effect.sync(() => SyncEvent.run(MessageV2.Event.Updated, { sessionID: msg.sessionID, info: msg }))
+          yield* sync.run(MessageV2.Event.Updated, { sessionID: msg.sessionID, info: msg })
           return msg
         }).pipe(Effect.withSpan("Session.updateMessage"))
 
       const updatePart = <T extends MessageV2.Part>(part: T): Effect.Effect<T> =>
         Effect.gen(function* () {
-          yield* Effect.sync(() =>
-            SyncEvent.run(MessageV2.Event.PartUpdated, {
-              sessionID: part.sessionID,
-              part: structuredClone(part),
-              time: Date.now(),
-            }),
-          )
+          yield* sync.run(MessageV2.Event.PartUpdated, {
+            sessionID: part.sessionID,
+            part: structuredClone(part),
+            time: Date.now(),
+          })
           return part
         }).pipe(Effect.withSpan("Session.updatePart"))
 
@@ -549,8 +550,7 @@ export namespace Session {
         return session
       })
 
-      const patch = (sessionID: SessionID, info: Patch) =>
-        Effect.sync(() => SyncEvent.run(Event.Updated, { sessionID, info }))
+      const patch = (sessionID: SessionID, info: Patch) => sync.run(Event.Updated, { sessionID, info })
 
       const touch = Effect.fn("Session.touch")(function* (sessionID: SessionID) {
         yield* patch(sessionID, { time: { updated: Date.now() } })
@@ -607,12 +607,10 @@ export namespace Session {
         sessionID: SessionID
         messageID: MessageID
       }) {
-        yield* Effect.sync(() =>
-          SyncEvent.run(MessageV2.Event.Removed, {
-            sessionID: input.sessionID,
-            messageID: input.messageID,
-          }),
-        )
+        yield* sync.run(MessageV2.Event.Removed, {
+          sessionID: input.sessionID,
+          messageID: input.messageID,
+        })
         return input.messageID
       })
 
@@ -621,13 +619,11 @@ export namespace Session {
         messageID: MessageID
         partID: PartID
       }) {
-        yield* Effect.sync(() =>
-          SyncEvent.run(MessageV2.Event.PartRemoved, {
-            sessionID: input.sessionID,
-            messageID: input.messageID,
-            partID: input.partID,
-          }),
-        )
+        yield* sync.run(MessageV2.Event.PartRemoved, {
+          sessionID: input.sessionID,
+          messageID: input.messageID,
+          partID: input.partID,
+        })
         return input.partID
       })
 
@@ -678,7 +674,11 @@ export namespace Session {
     }),
   )
 
-  export const defaultLayer = layer.pipe(Layer.provide(Bus.layer), Layer.provide(Storage.defaultLayer))
+  export const defaultLayer = layer.pipe(
+    Layer.provide(Bus.layer),
+    Layer.provide(Storage.defaultLayer),
+    Layer.provide(SyncEvent.defaultLayer),
+  )
 
   const { runPromise } = makeRuntime(Service, defaultLayer)
 
