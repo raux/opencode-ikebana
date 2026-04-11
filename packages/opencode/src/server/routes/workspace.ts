@@ -28,7 +28,7 @@ export const WorkspaceRoutes = lazy(() =>
       }),
       validator(
         "json",
-        Workspace.create.schema.omit({
+        Workspace.CreateInput.omit({
           projectID: true,
         }),
       ),
@@ -59,7 +59,7 @@ export const WorkspaceRoutes = lazy(() =>
         },
       }),
       async (c) => {
-        return c.json(Workspace.list(Instance.project))
+        return c.json(await Workspace.list(Instance.project))
       },
     )
     .get(
@@ -80,8 +80,8 @@ export const WorkspaceRoutes = lazy(() =>
         },
       }),
       async (c) => {
-        const ids = new Set(Workspace.list(Instance.project).map((item) => item.id))
-        return c.json(Workspace.status().filter((item) => ids.has(item.workspaceID)))
+        const ids = new Set((await Workspace.list(Instance.project)).map((item) => item.id))
+        return c.json((await Workspace.status()).filter((item) => ids.has(item.workspaceID)))
       },
     )
     .delete(
