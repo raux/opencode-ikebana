@@ -31,6 +31,7 @@ import { SessionRunState } from "../../src/session/run-state"
 import { MessageID, PartID, SessionID } from "../../src/session/schema"
 import { SessionStatus } from "../../src/session/status"
 import { Skill } from "../../src/skill"
+import { SystemPrompt } from "../../src/session/system"
 import { Shell } from "../../src/shell/shell"
 import { Snapshot } from "../../src/snapshot"
 import { ToolRegistry } from "../../src/tool/registry"
@@ -144,7 +145,7 @@ const filetime = Layer.succeed(
     read: () => Effect.void,
     get: () => Effect.succeed(undefined),
     assert: () => Effect.void,
-    withLock: (_filepath, fn) => Effect.promise(fn),
+    withLock: (_filepath, fn) => fn(),
   }),
 )
 
@@ -193,6 +194,7 @@ function makeHttp() {
       Layer.provideMerge(registry),
       Layer.provideMerge(trunc),
       Layer.provide(Instruction.defaultLayer),
+      Layer.provide(SystemPrompt.defaultLayer),
       Layer.provideMerge(deps),
     ),
   )
@@ -735,19 +737,12 @@ it.live(
           const registry = yield* ToolRegistry.Service
           const { task } = yield* registry.named()
           const original = task.execute
-          task.execute = async (_args, ctx) => {
-            ready.resolve()
-            ctx.abort.addEventListener("abort", () => aborted.resolve(), { once: true })
-            await new Promise<void>(() => {})
-            return {
-              title: "",
-              metadata: {
-                sessionId: SessionID.make("task"),
-                model: ref,
-              },
-              output: "",
-            }
-          }
+          task.execute = (_args, ctx) =>
+            Effect.callback<never>((resume) => {
+              ready.resolve()
+              ctx.abort.addEventListener("abort", () => aborted.resolve(), { once: true })
+              return Effect.sync(() => aborted.resolve())
+            })
           yield* Effect.addFinalizer(() => Effect.sync(() => void (task.execute = original)))
 
           const { prompt, chat } = yield* boot()
@@ -1393,11 +1388,10 @@ function hangUntilAborted(tool: { execute: (...args: any[]) => any }) {
   const ready = defer<void>()
   const aborted = defer<void>()
   const original = tool.execute
-  tool.execute = async (_args: any, ctx: any) => {
+  tool.execute = (_args: any, ctx: any) => {
     ready.resolve()
     ctx.abort.addEventListener("abort", () => aborted.resolve(), { once: true })
-    await new Promise<void>(() => {})
-    return { title: "", metadata: {}, output: "" }
+    return Effect.callback<never>(() => {})
   }
   const restore = Effect.addFinalizer(() => Effect.sync(() => void (tool.execute = original)))
   return { ready, aborted, restore }

@@ -7,10 +7,13 @@ import { Instance } from "../../src/project/instance"
 import { LSP } from "../../src/lsp"
 import { AppFileSystem } from "../../src/filesystem"
 import { Format } from "../../src/format"
+import { Bus } from "../../src/bus"
 import { tmpdir } from "../fixture/fixture"
 import { SessionID, MessageID } from "../../src/session/schema"
 
-const runtime = ManagedRuntime.make(Layer.mergeAll(LSP.defaultLayer, AppFileSystem.defaultLayer, Format.defaultLayer))
+const runtime = ManagedRuntime.make(
+  Layer.mergeAll(LSP.defaultLayer, AppFileSystem.defaultLayer, Format.defaultLayer, Bus.layer),
+)
 
 const baseCtx = {
   sessionID: SessionID.make("ses_test"),
@@ -19,7 +22,7 @@ const baseCtx = {
   agent: "build",
   abort: AbortSignal.any([]),
   messages: [],
-  metadata: () => {},
+  metadata: () => Effect.void,
 }
 
 type AskInput = {
@@ -42,22 +45,23 @@ type AskInput = {
 }
 
 type ToolCtx = typeof baseCtx & {
-  ask: (input: AskInput) => Promise<void>
+  ask: (input: AskInput) => Effect.Effect<void>
 }
 
 const execute = async (params: { patchText: string }, ctx: ToolCtx) => {
   const info = await runtime.runPromise(ApplyPatchTool)
-  const tool = await info.init()
-  return tool.execute(params, ctx)
+  const tool = await runtime.runPromise(info.init())
+  return Effect.runPromise(tool.execute(params, ctx))
 }
 
 const makeCtx = () => {
   const calls: AskInput[] = []
   const ctx: ToolCtx = {
     ...baseCtx,
-    ask: async (input) => {
-      calls.push(input)
-    },
+    ask: (input) =>
+      Effect.sync(() => {
+        calls.push(input)
+      }),
   }
 
   return { ctx, calls }

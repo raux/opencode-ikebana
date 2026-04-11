@@ -13,6 +13,7 @@ import { SessionShare } from "@/share/session"
 import { SessionStatus } from "@/session/status"
 import { SessionSummary } from "@/session/summary"
 import { Todo } from "../../session/todo"
+import { AppRuntime } from "../../effect/app-runtime"
 import { Agent } from "../../agent/agent"
 import { Snapshot } from "@/snapshot"
 import { Command } from "../../command"
@@ -93,7 +94,7 @@ export const SessionRoutes = lazy(() =>
         },
       }),
       async (c) => {
-        const result = await SessionStatus.list()
+        const result = await AppRuntime.runPromise(SessionStatus.Service.use((svc) => svc.list()))
         return c.json(Object.fromEntries(result))
       },
     )
@@ -185,7 +186,7 @@ export const SessionRoutes = lazy(() =>
       ),
       async (c) => {
         const sessionID = c.req.valid("param").sessionID
-        const todos = await Todo.get(sessionID)
+        const todos = await AppRuntime.runPromise(Todo.Service.use((svc) => svc.get(sessionID)))
         return c.json(todos)
       },
     )
@@ -272,6 +273,7 @@ export const SessionRoutes = lazy(() =>
         "json",
         z.object({
           title: z.string().optional(),
+          permission: Permission.Ruleset.optional(),
           time: z
             .object({
               archived: z.number().optional(),
@@ -282,9 +284,16 @@ export const SessionRoutes = lazy(() =>
       async (c) => {
         const sessionID = c.req.valid("param").sessionID
         const updates = c.req.valid("json")
+        const current = await Session.get(sessionID)
 
         if (updates.title !== undefined) {
           await Session.setTitle({ sessionID, title: updates.title })
+        }
+        if (updates.permission !== undefined) {
+          await Session.setPermission({
+            sessionID,
+            permission: Permission.merge(current.permission ?? [], updates.permission),
+          })
         }
         if (updates.time?.archived !== undefined) {
           await Session.setArchived({ sessionID, time: updates.time.archived })
