@@ -336,6 +336,7 @@ For each service, the migration is roughly:
 
 ### Migration log
 
+- `Snapshot` — facade destroyed 2026-04-11. Removed the `makeRuntime(...)` wrapper and the seven async exports (`init`, `track`, `patch`, `restore`, `revert`, `diff`, `diffFull`); `project/bootstrap.ts` now runs `svc.init()` through `BootstrapRuntime`, the debug CLI commands use `AppRuntime.runPromise(Snapshot.Service.use(...))`, and the snapshot/revert-compact/project-init-git tests were rewritten to the same pattern. `Snapshot.defaultLayer` was added to `BootstrapLayer` so bootstrap can resolve the service without pulling in `AppRuntime`.
 - `SessionStatus` — migrated 2026-04-11. Replaced the last route and retry-policy callers with `AppRuntime.runPromise(SessionStatus.Service.use(...))` and removed the `makeRuntime(...)` facade.
 - `ShareNext` — migrated 2026-04-11. Swapped remaining async callers to `AppRuntime.runPromise(ShareNext.Service.use(...))`, removed the `makeRuntime(...)` facade, and kept instance bootstrap on the shared app runtime.
 - `SessionTodo` — migrated 2026-04-10. Already matched the target service shape in `session/todo.ts`: single namespace, traced Effect methods, and no `makeRuntime(...)` facade remained; checklist updated to reflect the completed migration.

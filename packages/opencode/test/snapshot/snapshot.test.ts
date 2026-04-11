@@ -3,11 +3,12 @@ import { $ } from "bun"
 import fs from "fs/promises"
 import path from "path"
 import { Snapshot } from "../../src/snapshot"
+import { AppRuntime } from "../../src/effect/app-runtime"
 import { Instance } from "../../src/project/instance"
 import { Filesystem } from "../../src/util/filesystem"
 import { tmpdir } from "../fixture/fixture"
 
-// Git always outputs /-separated paths internally. Snapshot.patch() joins them
+// Git always outputs /-separated paths internally. AppRuntime.runPromise(Snapshot.Service.use((svc) => svc.patch())) joins them
 // with path.join (which produces \ on Windows) then normalizes back to /.
 // This helper does the same for expected values so assertions match cross-platform.
 const fwd = (...parts: string[]) => path.join(...parts).replaceAll("\\", "/")
@@ -40,12 +41,12 @@ test("tracks deleted files correctly", async () => {
   await Instance.provide({
     directory: tmp.path,
     fn: async () => {
-      const before = await Snapshot.track()
+      const before = await AppRuntime.runPromise(Snapshot.Service.use((svc) => svc.track()))
       expect(before).toBeTruthy()
 
       await $`rm ${tmp.path}/a.txt`.quiet()
 
-      expect((await Snapshot.patch(before!)).files).toContain(fwd(tmp.path, "a.txt"))
+      expect((await AppRuntime.runPromise(Snapshot.Service.use((svc) => svc.patch(before!)))).files).toContain(fwd(tmp.path, "a.txt"))
     },
   })
 })
@@ -55,12 +56,13 @@ test("revert should remove new files", async () => {
   await Instance.provide({
     directory: tmp.path,
     fn: async () => {
-      const before = await Snapshot.track()
+      const before = await AppRuntime.runPromise(Snapshot.Service.use((svc) => svc.track()))
       expect(before).toBeTruthy()
 
       await Filesystem.write(`${tmp.path}/new.txt`, "NEW")
 
-      await Snapshot.revert([await Snapshot.patch(before!)])
+      const patch = await AppRuntime.runPromise(Snapshot.Service.use((svc) => svc.patch(before!)))
+      await AppRuntime.runPromise(Snapshot.Service.use((svc) => svc.revert([patch])))
 
       expect(
         await fs
@@ -77,13 +79,14 @@ test("revert in subdirectory", async () => {
   await Instance.provide({
     directory: tmp.path,
     fn: async () => {
-      const before = await Snapshot.track()
+      const before = await AppRuntime.runPromise(Snapshot.Service.use((svc) => svc.track()))
       expect(before).toBeTruthy()
 
       await $`mkdir -p ${tmp.path}/sub`.quiet()
       await Filesystem.write(`${tmp.path}/sub/file.txt`, "SUB")
 
-      await Snapshot.revert([await Snapshot.patch(before!)])
+      const patch = await AppRuntime.runPromise(Snapshot.Service.use((svc) => svc.patch(before!)))
+      await AppRuntime.runPromise(Snapshot.Service.use((svc) => svc.revert([patch])))
 
       expect(
         await fs
@@ -102,7 +105,7 @@ test("multiple file operations", async () => {
   await Instance.provide({
     directory: tmp.path,
     fn: async () => {
-      const before = await Snapshot.track()
+      const before = await AppRuntime.runPromise(Snapshot.Service.use((svc) => svc.track()))
       expect(before).toBeTruthy()
 
       await $`rm ${tmp.path}/a.txt`.quiet()
@@ -111,7 +114,8 @@ test("multiple file operations", async () => {
       await Filesystem.write(`${tmp.path}/dir/d.txt`, "D")
       await Filesystem.write(`${tmp.path}/b.txt`, "MODIFIED")
 
-      await Snapshot.revert([await Snapshot.patch(before!)])
+      const patch = await AppRuntime.runPromise(Snapshot.Service.use((svc) => svc.patch(before!)))
+      await AppRuntime.runPromise(Snapshot.Service.use((svc) => svc.revert([patch])))
 
       expect(await fs.readFile(`${tmp.path}/a.txt`, "utf-8")).toBe(tmp.extra.aContent)
       expect(
@@ -132,12 +136,12 @@ test("empty directory handling", async () => {
   await Instance.provide({
     directory: tmp.path,
     fn: async () => {
-      const before = await Snapshot.track()
+      const before = await AppRuntime.runPromise(Snapshot.Service.use((svc) => svc.track()))
       expect(before).toBeTruthy()
 
       await $`mkdir ${tmp.path}/empty`.quiet()
 
-      expect((await Snapshot.patch(before!)).files.length).toBe(0)
+      expect((await AppRuntime.runPromise(Snapshot.Service.use((svc) => svc.patch(before!)))).files.length).toBe(0)
     },
   })
 })
@@ -147,15 +151,15 @@ test("binary file handling", async () => {
   await Instance.provide({
     directory: tmp.path,
     fn: async () => {
-      const before = await Snapshot.track()
+      const before = await AppRuntime.runPromise(Snapshot.Service.use((svc) => svc.track()))
       expect(before).toBeTruthy()
 
       await Filesystem.write(`${tmp.path}/image.png`, new Uint8Array([0x89, 0x50, 0x4e, 0x47]))
 
-      const patch = await Snapshot.patch(before!)
+      const patch = await AppRuntime.runPromise(Snapshot.Service.use((svc) => svc.patch(before!)))
       expect(patch.files).toContain(fwd(tmp.path, "image.png"))
 
-      await Snapshot.revert([patch])
+      await AppRuntime.runPromise(Snapshot.Service.use((svc) => svc.revert([patch])))
       expect(
         await fs
           .access(`${tmp.path}/image.png`)
@@ -171,12 +175,12 @@ test("symlink handling", async () => {
   await Instance.provide({
     directory: tmp.path,
     fn: async () => {
-      const before = await Snapshot.track()
+      const before = await AppRuntime.runPromise(Snapshot.Service.use((svc) => svc.track()))
       expect(before).toBeTruthy()
 
       await fs.symlink(`${tmp.path}/a.txt`, `${tmp.path}/link.txt`, "file")
 
-      expect((await Snapshot.patch(before!)).files).toContain(fwd(tmp.path, "link.txt"))
+      expect((await AppRuntime.runPromise(Snapshot.Service.use((svc) => svc.patch(before!)))).files).toContain(fwd(tmp.path, "link.txt"))
     },
   })
 })
@@ -186,12 +190,12 @@ test("file under size limit handling", async () => {
   await Instance.provide({
     directory: tmp.path,
     fn: async () => {
-      const before = await Snapshot.track()
+      const before = await AppRuntime.runPromise(Snapshot.Service.use((svc) => svc.track()))
       expect(before).toBeTruthy()
 
       await Filesystem.write(`${tmp.path}/large.txt`, "x".repeat(1024 * 1024))
 
-      expect((await Snapshot.patch(before!)).files).toContain(fwd(tmp.path, "large.txt"))
+      expect((await AppRuntime.runPromise(Snapshot.Service.use((svc) => svc.patch(before!)))).files).toContain(fwd(tmp.path, "large.txt"))
     },
   })
 })
@@ -201,14 +205,14 @@ test("large added files are skipped", async () => {
   await Instance.provide({
     directory: tmp.path,
     fn: async () => {
-      const before = await Snapshot.track()
+      const before = await AppRuntime.runPromise(Snapshot.Service.use((svc) => svc.track()))
       expect(before).toBeTruthy()
 
       await Filesystem.write(`${tmp.path}/huge.txt`, new Uint8Array(2 * 1024 * 1024 + 1))
 
-      expect((await Snapshot.patch(before!)).files).toEqual([])
-      expect(await Snapshot.diff(before!)).toBe("")
-      expect(await Snapshot.track()).toBe(before)
+      expect((await AppRuntime.runPromise(Snapshot.Service.use((svc) => svc.patch(before!)))).files).toEqual([])
+      expect(await AppRuntime.runPromise(Snapshot.Service.use((svc) => svc.diff(before!)))).toBe("")
+      expect(await AppRuntime.runPromise(Snapshot.Service.use((svc) => svc.track()))).toBe(before)
     },
   })
 })
@@ -218,13 +222,14 @@ test("nested directory revert", async () => {
   await Instance.provide({
     directory: tmp.path,
     fn: async () => {
-      const before = await Snapshot.track()
+      const before = await AppRuntime.runPromise(Snapshot.Service.use((svc) => svc.track()))
       expect(before).toBeTruthy()
 
       await $`mkdir -p ${tmp.path}/level1/level2/level3`.quiet()
       await Filesystem.write(`${tmp.path}/level1/level2/level3/deep.txt`, "DEEP")
 
-      await Snapshot.revert([await Snapshot.patch(before!)])
+      const patch = await AppRuntime.runPromise(Snapshot.Service.use((svc) => svc.patch(before!)))
+      await AppRuntime.runPromise(Snapshot.Service.use((svc) => svc.revert([patch])))
 
       expect(
         await fs
@@ -241,14 +246,14 @@ test("special characters in filenames", async () => {
   await Instance.provide({
     directory: tmp.path,
     fn: async () => {
-      const before = await Snapshot.track()
+      const before = await AppRuntime.runPromise(Snapshot.Service.use((svc) => svc.track()))
       expect(before).toBeTruthy()
 
       await Filesystem.write(`${tmp.path}/file with spaces.txt`, "SPACES")
       await Filesystem.write(`${tmp.path}/file-with-dashes.txt`, "DASHES")
       await Filesystem.write(`${tmp.path}/file_with_underscores.txt`, "UNDERSCORES")
 
-      const files = (await Snapshot.patch(before!)).files
+      const files = (await AppRuntime.runPromise(Snapshot.Service.use((svc) => svc.patch(before!)))).files
       expect(files).toContain(fwd(tmp.path, "file with spaces.txt"))
       expect(files).toContain(fwd(tmp.path, "file-with-dashes.txt"))
       expect(files).toContain(fwd(tmp.path, "file_with_underscores.txt"))
@@ -262,10 +267,10 @@ test("revert with empty patches", async () => {
     directory: tmp.path,
     fn: async () => {
       // Should not crash with empty patches
-      expect(Snapshot.revert([])).resolves.toBeUndefined()
+      expect(AppRuntime.runPromise(Snapshot.Service.use((svc) => svc.revert([])))).resolves.toBeUndefined()
 
       // Should not crash with patches that have empty file lists
-      expect(Snapshot.revert([{ hash: "dummy", files: [] }])).resolves.toBeUndefined()
+      expect(AppRuntime.runPromise(Snapshot.Service.use((svc) => svc.revert([{ hash: "dummy", files: [] }])))).resolves.toBeUndefined()
     },
   })
 })
@@ -275,14 +280,14 @@ test("patch with invalid hash", async () => {
   await Instance.provide({
     directory: tmp.path,
     fn: async () => {
-      const before = await Snapshot.track()
+      const before = await AppRuntime.runPromise(Snapshot.Service.use((svc) => svc.track()))
       expect(before).toBeTruthy()
 
       // Create a change
       await Filesystem.write(`${tmp.path}/test.txt`, "TEST")
 
       // Try to patch with invalid hash - should handle gracefully
-      const patch = await Snapshot.patch("invalid-hash-12345")
+      const patch = await AppRuntime.runPromise(Snapshot.Service.use((svc) => svc.patch("invalid-hash-12345")))
       expect(patch.files).toEqual([])
       expect(patch.hash).toBe("invalid-hash-12345")
     },
@@ -294,18 +299,18 @@ test("revert non-existent file", async () => {
   await Instance.provide({
     directory: tmp.path,
     fn: async () => {
-      const before = await Snapshot.track()
+      const before = await AppRuntime.runPromise(Snapshot.Service.use((svc) => svc.track()))
       expect(before).toBeTruthy()
 
       // Try to revert a file that doesn't exist in the snapshot
       // This should not crash
       expect(
-        Snapshot.revert([
+        AppRuntime.runPromise(Snapshot.Service.use((svc) => svc.revert([
           {
             hash: before!,
             files: [`${tmp.path}/nonexistent.txt`],
           },
-        ]),
+        ]))),
       ).resolves.toBeUndefined()
     },
   })
@@ -316,7 +321,7 @@ test("unicode filenames", async () => {
   await Instance.provide({
     directory: tmp.path,
     fn: async () => {
-      const before = await Snapshot.track()
+      const before = await AppRuntime.runPromise(Snapshot.Service.use((svc) => svc.track()))
       expect(before).toBeTruthy()
 
       const unicodeFiles = [
@@ -330,14 +335,14 @@ test("unicode filenames", async () => {
         await Filesystem.write(file.path, file.content)
       }
 
-      const patch = await Snapshot.patch(before!)
+      const patch = await AppRuntime.runPromise(Snapshot.Service.use((svc) => svc.patch(before!)))
       expect(patch.files.length).toBe(4)
 
       for (const file of unicodeFiles) {
         expect(patch.files).toContain(file.path)
       }
 
-      await Snapshot.revert([patch])
+      await AppRuntime.runPromise(Snapshot.Service.use((svc) => svc.revert([patch])))
 
       for (const file of unicodeFiles) {
         expect(
@@ -362,17 +367,17 @@ test.skip("unicode filenames modification and restore", async () => {
       await Filesystem.write(chineseFile, "original chinese")
       await Filesystem.write(cyrillicFile, "original cyrillic")
 
-      const before = await Snapshot.track()
+      const before = await AppRuntime.runPromise(Snapshot.Service.use((svc) => svc.track()))
       expect(before).toBeTruthy()
 
       await Filesystem.write(chineseFile, "modified chinese")
       await Filesystem.write(cyrillicFile, "modified cyrillic")
 
-      const patch = await Snapshot.patch(before!)
+      const patch = await AppRuntime.runPromise(Snapshot.Service.use((svc) => svc.patch(before!)))
       expect(patch.files).toContain(chineseFile)
       expect(patch.files).toContain(cyrillicFile)
 
-      await Snapshot.revert([patch])
+      await AppRuntime.runPromise(Snapshot.Service.use((svc) => svc.revert([patch])))
 
       expect(await fs.readFile(chineseFile, "utf-8")).toBe("original chinese")
       expect(await fs.readFile(cyrillicFile, "utf-8")).toBe("original cyrillic")
@@ -385,17 +390,17 @@ test("unicode filenames in subdirectories", async () => {
   await Instance.provide({
     directory: tmp.path,
     fn: async () => {
-      const before = await Snapshot.track()
+      const before = await AppRuntime.runPromise(Snapshot.Service.use((svc) => svc.track()))
       expect(before).toBeTruthy()
 
       await $`mkdir -p "${tmp.path}/目录/подкаталог"`.quiet()
       const deepFile = fwd(tmp.path, "目录", "подкаталог", "文件.txt")
       await Filesystem.write(deepFile, "deep unicode content")
 
-      const patch = await Snapshot.patch(before!)
+      const patch = await AppRuntime.runPromise(Snapshot.Service.use((svc) => svc.patch(before!)))
       expect(patch.files).toContain(deepFile)
 
-      await Snapshot.revert([patch])
+      await AppRuntime.runPromise(Snapshot.Service.use((svc) => svc.revert([patch])))
       expect(
         await fs
           .access(deepFile)
@@ -411,7 +416,7 @@ test("very long filenames", async () => {
   await Instance.provide({
     directory: tmp.path,
     fn: async () => {
-      const before = await Snapshot.track()
+      const before = await AppRuntime.runPromise(Snapshot.Service.use((svc) => svc.track()))
       expect(before).toBeTruthy()
 
       const longName = "a".repeat(200) + ".txt"
@@ -419,10 +424,10 @@ test("very long filenames", async () => {
 
       await Filesystem.write(longFile, "long filename content")
 
-      const patch = await Snapshot.patch(before!)
+      const patch = await AppRuntime.runPromise(Snapshot.Service.use((svc) => svc.patch(before!)))
       expect(patch.files).toContain(longFile)
 
-      await Snapshot.revert([patch])
+      await AppRuntime.runPromise(Snapshot.Service.use((svc) => svc.revert([patch])))
       expect(
         await fs
           .access(longFile)
@@ -438,14 +443,14 @@ test("hidden files", async () => {
   await Instance.provide({
     directory: tmp.path,
     fn: async () => {
-      const before = await Snapshot.track()
+      const before = await AppRuntime.runPromise(Snapshot.Service.use((svc) => svc.track()))
       expect(before).toBeTruthy()
 
       await Filesystem.write(`${tmp.path}/.hidden`, "hidden content")
       await Filesystem.write(`${tmp.path}/.gitignore`, "*.log")
       await Filesystem.write(`${tmp.path}/.config`, "config content")
 
-      const patch = await Snapshot.patch(before!)
+      const patch = await AppRuntime.runPromise(Snapshot.Service.use((svc) => svc.patch(before!)))
       expect(patch.files).toContain(fwd(tmp.path, ".hidden"))
       expect(patch.files).toContain(fwd(tmp.path, ".gitignore"))
       expect(patch.files).toContain(fwd(tmp.path, ".config"))
@@ -458,7 +463,7 @@ test("nested symlinks", async () => {
   await Instance.provide({
     directory: tmp.path,
     fn: async () => {
-      const before = await Snapshot.track()
+      const before = await AppRuntime.runPromise(Snapshot.Service.use((svc) => svc.track()))
       expect(before).toBeTruthy()
 
       await $`mkdir -p ${tmp.path}/sub/dir`.quiet()
@@ -466,7 +471,7 @@ test("nested symlinks", async () => {
       await fs.symlink(`${tmp.path}/sub/dir/target.txt`, `${tmp.path}/sub/dir/link.txt`, "file")
       await fs.symlink(`${tmp.path}/sub`, `${tmp.path}/sub-link`, "dir")
 
-      const patch = await Snapshot.patch(before!)
+      const patch = await AppRuntime.runPromise(Snapshot.Service.use((svc) => svc.patch(before!)))
       expect(patch.files).toContain(fwd(tmp.path, "sub", "dir", "link.txt"))
       expect(patch.files).toContain(fwd(tmp.path, "sub-link"))
     },
@@ -478,7 +483,7 @@ test("file permissions and ownership changes", async () => {
   await Instance.provide({
     directory: tmp.path,
     fn: async () => {
-      const before = await Snapshot.track()
+      const before = await AppRuntime.runPromise(Snapshot.Service.use((svc) => svc.track()))
       expect(before).toBeTruthy()
 
       // Change permissions multiple times
@@ -486,7 +491,7 @@ test("file permissions and ownership changes", async () => {
       await $`chmod 755 ${tmp.path}/a.txt`.quiet()
       await $`chmod 644 ${tmp.path}/a.txt`.quiet()
 
-      const patch = await Snapshot.patch(before!)
+      const patch = await AppRuntime.runPromise(Snapshot.Service.use((svc) => svc.patch(before!)))
       // Note: git doesn't track permission changes on existing files by default
       // Only tracks executable bit when files are first added
       expect(patch.files.length).toBe(0)
@@ -499,13 +504,13 @@ test("circular symlinks", async () => {
   await Instance.provide({
     directory: tmp.path,
     fn: async () => {
-      const before = await Snapshot.track()
+      const before = await AppRuntime.runPromise(Snapshot.Service.use((svc) => svc.track()))
       expect(before).toBeTruthy()
 
       // Create circular symlink
       await fs.symlink(`${tmp.path}/circular`, `${tmp.path}/circular`, "dir").catch(() => {})
 
-      const patch = await Snapshot.patch(before!)
+      const patch = await AppRuntime.runPromise(Snapshot.Service.use((svc) => svc.patch(before!)))
       expect(patch.files.length).toBeGreaterThanOrEqual(0) // Should not crash
     },
   })
@@ -516,14 +521,14 @@ test("gitignore changes", async () => {
   await Instance.provide({
     directory: tmp.path,
     fn: async () => {
-      const before = await Snapshot.track()
+      const before = await AppRuntime.runPromise(Snapshot.Service.use((svc) => svc.track()))
       expect(before).toBeTruthy()
 
       await Filesystem.write(`${tmp.path}/.gitignore`, "*.ignored")
       await Filesystem.write(`${tmp.path}/test.ignored`, "ignored content")
       await Filesystem.write(`${tmp.path}/normal.txt`, "normal content")
 
-      const patch = await Snapshot.patch(before!)
+      const patch = await AppRuntime.runPromise(Snapshot.Service.use((svc) => svc.patch(before!)))
 
       // Should track gitignore itself
       expect(patch.files).toContain(fwd(tmp.path, ".gitignore"))
@@ -540,7 +545,7 @@ test("git info exclude changes", async () => {
   await Instance.provide({
     directory: tmp.path,
     fn: async () => {
-      const before = await Snapshot.track()
+      const before = await AppRuntime.runPromise(Snapshot.Service.use((svc) => svc.track()))
       expect(before).toBeTruthy()
 
       const file = `${tmp.path}/.git/info/exclude`
@@ -549,12 +554,12 @@ test("git info exclude changes", async () => {
       await Bun.write(`${tmp.path}/ignored.txt`, "ignored content")
       await Bun.write(`${tmp.path}/normal.txt`, "normal content")
 
-      const patch = await Snapshot.patch(before!)
+      const patch = await AppRuntime.runPromise(Snapshot.Service.use((svc) => svc.patch(before!)))
       expect(patch.files).toContain(fwd(tmp.path, "normal.txt"))
       expect(patch.files).not.toContain(fwd(tmp.path, "ignored.txt"))
 
-      const after = await Snapshot.track()
-      const diffs = await Snapshot.diffFull(before!, after!)
+      const after = await AppRuntime.runPromise(Snapshot.Service.use((svc) => svc.track()))
+      const diffs = await AppRuntime.runPromise(Snapshot.Service.use((svc) => svc.diffFull(before!, after!)))
       expect(diffs.some((x) => x.file === "normal.txt")).toBe(true)
       expect(diffs.some((x) => x.file === "ignored.txt")).toBe(false)
     },
@@ -574,7 +579,7 @@ test("git info exclude keeps global excludes", async () => {
       const prev = process.env.GIT_CONFIG_GLOBAL
       process.env.GIT_CONFIG_GLOBAL = config
       try {
-        const before = await Snapshot.track()
+        const before = await AppRuntime.runPromise(Snapshot.Service.use((svc) => svc.track()))
         expect(before).toBeTruthy()
 
         const file = `${tmp.path}/.git/info/exclude`
@@ -585,7 +590,7 @@ test("git info exclude keeps global excludes", async () => {
         await Bun.write(`${tmp.path}/info.tmp`, "info content")
         await Bun.write(`${tmp.path}/normal.txt`, "normal content")
 
-        const patch = await Snapshot.patch(before!)
+        const patch = await AppRuntime.runPromise(Snapshot.Service.use((svc) => svc.patch(before!)))
         expect(patch.files).toContain(fwd(tmp.path, "normal.txt"))
         expect(patch.files).not.toContain(fwd(tmp.path, "global.tmp"))
         expect(patch.files).not.toContain(fwd(tmp.path, "info.tmp"))
@@ -602,7 +607,7 @@ test("concurrent file operations during patch", async () => {
   await Instance.provide({
     directory: tmp.path,
     fn: async () => {
-      const before = await Snapshot.track()
+      const before = await AppRuntime.runPromise(Snapshot.Service.use((svc) => svc.track()))
       expect(before).toBeTruthy()
 
       // Start creating files
@@ -615,7 +620,7 @@ test("concurrent file operations during patch", async () => {
       })()
 
       // Get patch while files are being created
-      const patchPromise = Snapshot.patch(before!)
+      const patchPromise = AppRuntime.runPromise(Snapshot.Service.use((svc) => svc.patch(before!)))
 
       await createPromise
       const patch = await patchPromise
@@ -634,9 +639,9 @@ test("snapshot state isolation between projects", async () => {
   await Instance.provide({
     directory: tmp1.path,
     fn: async () => {
-      const before1 = await Snapshot.track()
+      const before1 = await AppRuntime.runPromise(Snapshot.Service.use((svc) => svc.track()))
       await Filesystem.write(`${tmp1.path}/project1.txt`, "project1 content")
-      const patch1 = await Snapshot.patch(before1!)
+      const patch1 = await AppRuntime.runPromise(Snapshot.Service.use((svc) => svc.patch(before1!)))
       expect(patch1.files).toContain(fwd(tmp1.path, "project1.txt"))
     },
   })
@@ -644,9 +649,9 @@ test("snapshot state isolation between projects", async () => {
   await Instance.provide({
     directory: tmp2.path,
     fn: async () => {
-      const before2 = await Snapshot.track()
+      const before2 = await AppRuntime.runPromise(Snapshot.Service.use((svc) => svc.track()))
       await Filesystem.write(`${tmp2.path}/project2.txt`, "project2 content")
-      const patch2 = await Snapshot.patch(before2!)
+      const patch2 = await AppRuntime.runPromise(Snapshot.Service.use((svc) => svc.patch(before2!)))
       expect(patch2.files).toContain(fwd(tmp2.path, "project2.txt"))
 
       // Ensure project1 files don't appear in project2
@@ -664,20 +669,20 @@ test("patch detects changes in secondary worktree", async () => {
     await Instance.provide({
       directory: tmp.path,
       fn: async () => {
-        expect(await Snapshot.track()).toBeTruthy()
+        expect(await AppRuntime.runPromise(Snapshot.Service.use((svc) => svc.track()))).toBeTruthy()
       },
     })
 
     await Instance.provide({
       directory: worktreePath,
       fn: async () => {
-        const before = await Snapshot.track()
+        const before = await AppRuntime.runPromise(Snapshot.Service.use((svc) => svc.track()))
         expect(before).toBeTruthy()
 
         const worktreeFile = fwd(worktreePath, "worktree.txt")
         await Filesystem.write(worktreeFile, "worktree content")
 
-        const patch = await Snapshot.patch(before!)
+        const patch = await AppRuntime.runPromise(Snapshot.Service.use((svc) => svc.patch(before!)))
         expect(patch.files).toContain(worktreeFile)
       },
     })
@@ -696,7 +701,7 @@ test("revert only removes files in invoking worktree", async () => {
     await Instance.provide({
       directory: tmp.path,
       fn: async () => {
-        expect(await Snapshot.track()).toBeTruthy()
+        expect(await AppRuntime.runPromise(Snapshot.Service.use((svc) => svc.track()))).toBeTruthy()
       },
     })
     const primaryFile = `${tmp.path}/worktree.txt`
@@ -705,14 +710,14 @@ test("revert only removes files in invoking worktree", async () => {
     await Instance.provide({
       directory: worktreePath,
       fn: async () => {
-        const before = await Snapshot.track()
+        const before = await AppRuntime.runPromise(Snapshot.Service.use((svc) => svc.track()))
         expect(before).toBeTruthy()
 
         const worktreeFile = fwd(worktreePath, "worktree.txt")
         await Filesystem.write(worktreeFile, "worktree content")
 
-        const patch = await Snapshot.patch(before!)
-        await Snapshot.revert([patch])
+        const patch = await AppRuntime.runPromise(Snapshot.Service.use((svc) => svc.patch(before!)))
+        await AppRuntime.runPromise(Snapshot.Service.use((svc) => svc.revert([patch])))
 
         expect(
           await fs
@@ -740,14 +745,14 @@ test("diff reports worktree-only/shared edits and ignores primary-only", async (
     await Instance.provide({
       directory: tmp.path,
       fn: async () => {
-        expect(await Snapshot.track()).toBeTruthy()
+        expect(await AppRuntime.runPromise(Snapshot.Service.use((svc) => svc.track()))).toBeTruthy()
       },
     })
 
     await Instance.provide({
       directory: worktreePath,
       fn: async () => {
-        const before = await Snapshot.track()
+        const before = await AppRuntime.runPromise(Snapshot.Service.use((svc) => svc.track()))
         expect(before).toBeTruthy()
 
         await Filesystem.write(`${worktreePath}/worktree-only.txt`, "worktree diff content")
@@ -755,7 +760,7 @@ test("diff reports worktree-only/shared edits and ignores primary-only", async (
         await Filesystem.write(`${tmp.path}/shared.txt`, "primary edit")
         await Filesystem.write(`${tmp.path}/primary-only.txt`, "primary change")
 
-        const diff = await Snapshot.diff(before!)
+        const diff = await AppRuntime.runPromise(Snapshot.Service.use((svc) => svc.diff(before!)))
         expect(diff).toContain("worktree-only.txt")
         expect(diff).toContain("shared.txt")
         expect(diff).not.toContain("primary-only.txt")
@@ -774,15 +779,15 @@ test("track with no changes returns same hash", async () => {
   await Instance.provide({
     directory: tmp.path,
     fn: async () => {
-      const hash1 = await Snapshot.track()
+      const hash1 = await AppRuntime.runPromise(Snapshot.Service.use((svc) => svc.track()))
       expect(hash1).toBeTruthy()
 
       // Track again with no changes
-      const hash2 = await Snapshot.track()
+      const hash2 = await AppRuntime.runPromise(Snapshot.Service.use((svc) => svc.track()))
       expect(hash2).toBe(hash1!)
 
       // Track again
-      const hash3 = await Snapshot.track()
+      const hash3 = await AppRuntime.runPromise(Snapshot.Service.use((svc) => svc.track()))
       expect(hash3).toBe(hash1!)
     },
   })
@@ -793,7 +798,7 @@ test("diff function with various changes", async () => {
   await Instance.provide({
     directory: tmp.path,
     fn: async () => {
-      const before = await Snapshot.track()
+      const before = await AppRuntime.runPromise(Snapshot.Service.use((svc) => svc.track()))
       expect(before).toBeTruthy()
 
       // Make various changes
@@ -801,7 +806,7 @@ test("diff function with various changes", async () => {
       await Filesystem.write(`${tmp.path}/new.txt`, "new content")
       await Filesystem.write(`${tmp.path}/b.txt`, "modified content")
 
-      const diff = await Snapshot.diff(before!)
+      const diff = await AppRuntime.runPromise(Snapshot.Service.use((svc) => svc.diff(before!)))
       expect(diff).toContain("a.txt")
       expect(diff).toContain("b.txt")
       expect(diff).toContain("new.txt")
@@ -814,7 +819,7 @@ test("restore function", async () => {
   await Instance.provide({
     directory: tmp.path,
     fn: async () => {
-      const before = await Snapshot.track()
+      const before = await AppRuntime.runPromise(Snapshot.Service.use((svc) => svc.track()))
       expect(before).toBeTruthy()
 
       // Make changes
@@ -823,7 +828,7 @@ test("restore function", async () => {
       await Filesystem.write(`${tmp.path}/b.txt`, "modified")
 
       // Restore to original state
-      await Snapshot.restore(before!)
+      await AppRuntime.runPromise(Snapshot.Service.use((svc) => svc.restore(before!)))
 
       expect(
         await fs
@@ -848,20 +853,20 @@ test("revert should not delete files that existed but were deleted in snapshot",
   await Instance.provide({
     directory: tmp.path,
     fn: async () => {
-      const snapshot1 = await Snapshot.track()
+      const snapshot1 = await AppRuntime.runPromise(Snapshot.Service.use((svc) => svc.track()))
       expect(snapshot1).toBeTruthy()
 
       await $`rm ${tmp.path}/a.txt`.quiet()
 
-      const snapshot2 = await Snapshot.track()
+      const snapshot2 = await AppRuntime.runPromise(Snapshot.Service.use((svc) => svc.track()))
       expect(snapshot2).toBeTruthy()
 
       await Filesystem.write(`${tmp.path}/a.txt`, "recreated content")
 
-      const patch = await Snapshot.patch(snapshot2!)
+      const patch = await AppRuntime.runPromise(Snapshot.Service.use((svc) => svc.patch(snapshot2!)))
       expect(patch.files).toContain(fwd(tmp.path, "a.txt"))
 
-      await Snapshot.revert([patch])
+      await AppRuntime.runPromise(Snapshot.Service.use((svc) => svc.revert([patch])))
 
       expect(
         await fs
@@ -880,18 +885,18 @@ test("revert preserves file that existed in snapshot when deleted then recreated
     fn: async () => {
       await Filesystem.write(`${tmp.path}/existing.txt`, "original content")
 
-      const snapshot = await Snapshot.track()
+      const snapshot = await AppRuntime.runPromise(Snapshot.Service.use((svc) => svc.track()))
       expect(snapshot).toBeTruthy()
 
       await $`rm ${tmp.path}/existing.txt`.quiet()
       await Filesystem.write(`${tmp.path}/existing.txt`, "recreated")
       await Filesystem.write(`${tmp.path}/newfile.txt`, "new")
 
-      const patch = await Snapshot.patch(snapshot!)
+      const patch = await AppRuntime.runPromise(Snapshot.Service.use((svc) => svc.patch(snapshot!)))
       expect(patch.files).toContain(fwd(tmp.path, "existing.txt"))
       expect(patch.files).toContain(fwd(tmp.path, "newfile.txt"))
 
-      await Snapshot.revert([patch])
+      await AppRuntime.runPromise(Snapshot.Service.use((svc) => svc.revert([patch])))
 
       expect(
         await fs
@@ -919,7 +924,7 @@ test("diffFull sets status based on git change type", async () => {
       await Filesystem.write(`${tmp.path}/trim.txt`, "line1\nline2\n")
       await Filesystem.write(`${tmp.path}/delete.txt`, "gone")
 
-      const before = await Snapshot.track()
+      const before = await AppRuntime.runPromise(Snapshot.Service.use((svc) => svc.track()))
       expect(before).toBeTruthy()
 
       await Filesystem.write(`${tmp.path}/grow.txt`, "one\ntwo\n")
@@ -927,10 +932,10 @@ test("diffFull sets status based on git change type", async () => {
       await $`rm ${tmp.path}/delete.txt`.quiet()
       await Filesystem.write(`${tmp.path}/added.txt`, "new")
 
-      const after = await Snapshot.track()
+      const after = await AppRuntime.runPromise(Snapshot.Service.use((svc) => svc.track()))
       expect(after).toBeTruthy()
 
-      const diffs = await Snapshot.diffFull(before!, after!)
+      const diffs = await AppRuntime.runPromise(Snapshot.Service.use((svc) => svc.diffFull(before!, after!)))
       expect(diffs.length).toBe(4)
 
       const added = diffs.find((d) => d.file === "added.txt")
@@ -961,15 +966,15 @@ test("diffFull with new file additions", async () => {
   await Instance.provide({
     directory: tmp.path,
     fn: async () => {
-      const before = await Snapshot.track()
+      const before = await AppRuntime.runPromise(Snapshot.Service.use((svc) => svc.track()))
       expect(before).toBeTruthy()
 
       await Filesystem.write(`${tmp.path}/new.txt`, "new content")
 
-      const after = await Snapshot.track()
+      const after = await AppRuntime.runPromise(Snapshot.Service.use((svc) => svc.track()))
       expect(after).toBeTruthy()
 
-      const diffs = await Snapshot.diffFull(before!, after!)
+      const diffs = await AppRuntime.runPromise(Snapshot.Service.use((svc) => svc.diffFull(before!, after!)))
       expect(diffs.length).toBe(1)
 
       const newFileDiff = diffs[0]
@@ -999,7 +1004,7 @@ test("diffFull with a large interleaved mixed diff", async () => {
         ...bin.map((file, i) => Filesystem.write(file, new Uint8Array([0, i, 255, i % 251]))),
       ])
 
-      const before = await Snapshot.track()
+      const before = await AppRuntime.runPromise(Snapshot.Service.use((svc) => svc.track()))
       expect(before).toBeTruthy()
 
       await Promise.all([
@@ -1009,10 +1014,10 @@ test("diffFull with a large interleaved mixed diff", async () => {
         ...del.map((file) => fs.rm(file)),
       ])
 
-      const after = await Snapshot.track()
+      const after = await AppRuntime.runPromise(Snapshot.Service.use((svc) => svc.track()))
       expect(after).toBeTruthy()
 
-      const diffs = await Snapshot.diffFull(before!, after!)
+      const diffs = await AppRuntime.runPromise(Snapshot.Service.use((svc) => svc.diffFull(before!, after!)))
       expect(diffs).toHaveLength(ids.length * 4)
 
       const map = new Map(diffs.map((item) => [item.file, item]))
@@ -1054,17 +1059,17 @@ test("diffFull preserves git diff order across batch boundaries", async () => {
       await $`mkdir -p ${tmp.path}/order`.quiet()
       await Promise.all(ids.map((id) => Filesystem.write(`${tmp.path}/order/${id}.txt`, `before-${id}`)))
 
-      const before = await Snapshot.track()
+      const before = await AppRuntime.runPromise(Snapshot.Service.use((svc) => svc.track()))
       expect(before).toBeTruthy()
 
       await Promise.all(ids.map((id) => Filesystem.write(`${tmp.path}/order/${id}.txt`, `after-${id}`)))
 
-      const after = await Snapshot.track()
+      const after = await AppRuntime.runPromise(Snapshot.Service.use((svc) => svc.track()))
       expect(after).toBeTruthy()
 
       const expected = ids.map((id) => `order/${id}.txt`)
 
-      const diffs = await Snapshot.diffFull(before!, after!)
+      const diffs = await AppRuntime.runPromise(Snapshot.Service.use((svc) => svc.diffFull(before!, after!)))
       expect(diffs.map((item) => item.file)).toEqual(expected)
     },
   })
@@ -1075,15 +1080,15 @@ test("diffFull with file modifications", async () => {
   await Instance.provide({
     directory: tmp.path,
     fn: async () => {
-      const before = await Snapshot.track()
+      const before = await AppRuntime.runPromise(Snapshot.Service.use((svc) => svc.track()))
       expect(before).toBeTruthy()
 
       await Filesystem.write(`${tmp.path}/b.txt`, "modified content")
 
-      const after = await Snapshot.track()
+      const after = await AppRuntime.runPromise(Snapshot.Service.use((svc) => svc.track()))
       expect(after).toBeTruthy()
 
-      const diffs = await Snapshot.diffFull(before!, after!)
+      const diffs = await AppRuntime.runPromise(Snapshot.Service.use((svc) => svc.diffFull(before!, after!)))
       expect(diffs.length).toBe(1)
 
       const modifiedFileDiff = diffs[0]
@@ -1101,15 +1106,15 @@ test("diffFull with file deletions", async () => {
   await Instance.provide({
     directory: tmp.path,
     fn: async () => {
-      const before = await Snapshot.track()
+      const before = await AppRuntime.runPromise(Snapshot.Service.use((svc) => svc.track()))
       expect(before).toBeTruthy()
 
       await $`rm ${tmp.path}/a.txt`.quiet()
 
-      const after = await Snapshot.track()
+      const after = await AppRuntime.runPromise(Snapshot.Service.use((svc) => svc.track()))
       expect(after).toBeTruthy()
 
-      const diffs = await Snapshot.diffFull(before!, after!)
+      const diffs = await AppRuntime.runPromise(Snapshot.Service.use((svc) => svc.diffFull(before!, after!)))
       expect(diffs.length).toBe(1)
 
       const removedFileDiff = diffs[0]
@@ -1126,15 +1131,15 @@ test("diffFull with multiple line additions", async () => {
   await Instance.provide({
     directory: tmp.path,
     fn: async () => {
-      const before = await Snapshot.track()
+      const before = await AppRuntime.runPromise(Snapshot.Service.use((svc) => svc.track()))
       expect(before).toBeTruthy()
 
       await Filesystem.write(`${tmp.path}/multi.txt`, "line1\nline2\nline3")
 
-      const after = await Snapshot.track()
+      const after = await AppRuntime.runPromise(Snapshot.Service.use((svc) => svc.track()))
       expect(after).toBeTruthy()
 
-      const diffs = await Snapshot.diffFull(before!, after!)
+      const diffs = await AppRuntime.runPromise(Snapshot.Service.use((svc) => svc.diffFull(before!, after!)))
       expect(diffs.length).toBe(1)
 
       const multiDiff = diffs[0]
@@ -1152,16 +1157,16 @@ test("diffFull with addition and deletion", async () => {
   await Instance.provide({
     directory: tmp.path,
     fn: async () => {
-      const before = await Snapshot.track()
+      const before = await AppRuntime.runPromise(Snapshot.Service.use((svc) => svc.track()))
       expect(before).toBeTruthy()
 
       await Filesystem.write(`${tmp.path}/added.txt`, "added content")
       await $`rm ${tmp.path}/a.txt`.quiet()
 
-      const after = await Snapshot.track()
+      const after = await AppRuntime.runPromise(Snapshot.Service.use((svc) => svc.track()))
       expect(after).toBeTruthy()
 
-      const diffs = await Snapshot.diffFull(before!, after!)
+      const diffs = await AppRuntime.runPromise(Snapshot.Service.use((svc) => svc.diffFull(before!, after!)))
       expect(diffs.length).toBe(2)
 
       const addedFileDiff = diffs.find((d) => d.file === "added.txt")
@@ -1184,7 +1189,7 @@ test("diffFull with multiple additions and deletions", async () => {
   await Instance.provide({
     directory: tmp.path,
     fn: async () => {
-      const before = await Snapshot.track()
+      const before = await AppRuntime.runPromise(Snapshot.Service.use((svc) => svc.track()))
       expect(before).toBeTruthy()
 
       await Filesystem.write(`${tmp.path}/multi1.txt`, "line1\nline2\nline3")
@@ -1192,10 +1197,10 @@ test("diffFull with multiple additions and deletions", async () => {
       await $`rm ${tmp.path}/a.txt`.quiet()
       await $`rm ${tmp.path}/b.txt`.quiet()
 
-      const after = await Snapshot.track()
+      const after = await AppRuntime.runPromise(Snapshot.Service.use((svc) => svc.track()))
       expect(after).toBeTruthy()
 
-      const diffs = await Snapshot.diffFull(before!, after!)
+      const diffs = await AppRuntime.runPromise(Snapshot.Service.use((svc) => svc.diffFull(before!, after!)))
       expect(diffs.length).toBe(4)
 
       const multi1Diff = diffs.find((d) => d.file === "multi1.txt")
@@ -1226,13 +1231,13 @@ test("diffFull with no changes", async () => {
   await Instance.provide({
     directory: tmp.path,
     fn: async () => {
-      const before = await Snapshot.track()
+      const before = await AppRuntime.runPromise(Snapshot.Service.use((svc) => svc.track()))
       expect(before).toBeTruthy()
 
-      const after = await Snapshot.track()
+      const after = await AppRuntime.runPromise(Snapshot.Service.use((svc) => svc.track()))
       expect(after).toBeTruthy()
 
-      const diffs = await Snapshot.diffFull(before!, after!)
+      const diffs = await AppRuntime.runPromise(Snapshot.Service.use((svc) => svc.diffFull(before!, after!)))
       expect(diffs.length).toBe(0)
     },
   })
@@ -1243,15 +1248,15 @@ test("diffFull with binary file changes", async () => {
   await Instance.provide({
     directory: tmp.path,
     fn: async () => {
-      const before = await Snapshot.track()
+      const before = await AppRuntime.runPromise(Snapshot.Service.use((svc) => svc.track()))
       expect(before).toBeTruthy()
 
       await Filesystem.write(`${tmp.path}/binary.bin`, new Uint8Array([0x00, 0x01, 0x02, 0x03]))
 
-      const after = await Snapshot.track()
+      const after = await AppRuntime.runPromise(Snapshot.Service.use((svc) => svc.track()))
       expect(after).toBeTruthy()
 
-      const diffs = await Snapshot.diffFull(before!, after!)
+      const diffs = await AppRuntime.runPromise(Snapshot.Service.use((svc) => svc.diffFull(before!, after!)))
       expect(diffs.length).toBe(1)
 
       const binaryDiff = diffs[0]
@@ -1267,15 +1272,15 @@ test("diffFull with whitespace changes", async () => {
     directory: tmp.path,
     fn: async () => {
       await Filesystem.write(`${tmp.path}/whitespace.txt`, "line1\nline2")
-      const before = await Snapshot.track()
+      const before = await AppRuntime.runPromise(Snapshot.Service.use((svc) => svc.track()))
       expect(before).toBeTruthy()
 
       await Filesystem.write(`${tmp.path}/whitespace.txt`, "line1\n\nline2\n")
 
-      const after = await Snapshot.track()
+      const after = await AppRuntime.runPromise(Snapshot.Service.use((svc) => svc.track()))
       expect(after).toBeTruthy()
 
-      const diffs = await Snapshot.diffFull(before!, after!)
+      const diffs = await AppRuntime.runPromise(Snapshot.Service.use((svc) => svc.diffFull(before!, after!)))
       expect(diffs.length).toBe(1)
 
       const whitespaceDiff = diffs[0]
@@ -1292,26 +1297,26 @@ test("revert with overlapping files across patches uses first patch hash", async
     fn: async () => {
       // Write initial content and snapshot
       await Filesystem.write(`${tmp.path}/shared.txt`, "v1")
-      const snap1 = await Snapshot.track()
+      const snap1 = await AppRuntime.runPromise(Snapshot.Service.use((svc) => svc.track()))
       expect(snap1).toBeTruthy()
 
       // Modify and snapshot again
       await Filesystem.write(`${tmp.path}/shared.txt`, "v2")
-      const snap2 = await Snapshot.track()
+      const snap2 = await AppRuntime.runPromise(Snapshot.Service.use((svc) => svc.track()))
       expect(snap2).toBeTruthy()
 
       // Modify once more so both patches include shared.txt
       await Filesystem.write(`${tmp.path}/shared.txt`, "v3")
 
-      const patch1 = await Snapshot.patch(snap1!)
-      const patch2 = await Snapshot.patch(snap2!)
+      const patch1 = await AppRuntime.runPromise(Snapshot.Service.use((svc) => svc.patch(snap1!)))
+      const patch2 = await AppRuntime.runPromise(Snapshot.Service.use((svc) => svc.patch(snap2!)))
 
       // Both patches should include shared.txt
       expect(patch1.files).toContain(fwd(tmp.path, "shared.txt"))
       expect(patch2.files).toContain(fwd(tmp.path, "shared.txt"))
 
       // Revert with patch1 first — should use snap1's hash (restoring "v1")
-      await Snapshot.revert([patch1, patch2])
+      await AppRuntime.runPromise(Snapshot.Service.use((svc) => svc.revert([patch1, patch2])))
 
       const content = await fs.readFile(`${tmp.path}/shared.txt`, "utf-8")
       expect(content).toBe("v1")
@@ -1328,24 +1333,24 @@ test("revert preserves patch order when the same hash appears again", async () =
       await Filesystem.write(`${tmp.path}/foo/bar`, "v1")
       await Filesystem.write(`${tmp.path}/a.txt`, "v1")
 
-      const snap1 = await Snapshot.track()
+      const snap1 = await AppRuntime.runPromise(Snapshot.Service.use((svc) => svc.track()))
       expect(snap1).toBeTruthy()
 
       await $`rm -rf ${tmp.path}/foo`.quiet()
       await Filesystem.write(`${tmp.path}/foo`, "v2")
       await Filesystem.write(`${tmp.path}/a.txt`, "v2")
 
-      const snap2 = await Snapshot.track()
+      const snap2 = await AppRuntime.runPromise(Snapshot.Service.use((svc) => svc.track()))
       expect(snap2).toBeTruthy()
 
       await $`rm -rf ${tmp.path}/foo`.quiet()
       await Filesystem.write(`${tmp.path}/a.txt`, "v3")
 
-      await Snapshot.revert([
+      await AppRuntime.runPromise(Snapshot.Service.use((svc) => svc.revert([
         { hash: snap1!, files: [fwd(tmp.path, "a.txt")] },
         { hash: snap2!, files: [fwd(tmp.path, "foo")] },
         { hash: snap1!, files: [fwd(tmp.path, "foo", "bar")] },
-      ])
+      ])))
 
       expect(await fs.readFile(`${tmp.path}/a.txt`, "utf-8")).toBe("v1")
       expect((await fs.stat(`${tmp.path}/foo`)).isDirectory()).toBe(true)
@@ -1365,16 +1370,16 @@ test("revert handles large mixed batches across chunk boundaries", async () => {
       await $`mkdir -p ${tmp.path}/batch ${tmp.path}/fresh`.quiet()
       await Promise.all(base.map((file, i) => Filesystem.write(file, `base-${i}`)))
 
-      const snap = await Snapshot.track()
+      const snap = await AppRuntime.runPromise(Snapshot.Service.use((svc) => svc.track()))
       expect(snap).toBeTruthy()
 
       await Promise.all(base.map((file, i) => Filesystem.write(file, `next-${i}`)))
       await Promise.all(fresh.map((file, i) => Filesystem.write(file, `fresh-${i}`)))
 
-      const patch = await Snapshot.patch(snap!)
+      const patch = await AppRuntime.runPromise(Snapshot.Service.use((svc) => svc.patch(snap!)))
       expect(patch.files.length).toBe(base.length + fresh.length)
 
-      await Snapshot.revert([patch])
+      await AppRuntime.runPromise(Snapshot.Service.use((svc) => svc.revert([patch])))
 
       await Promise.all(
         base.map(async (file, i) => {

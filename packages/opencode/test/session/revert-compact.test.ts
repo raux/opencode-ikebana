@@ -7,6 +7,7 @@ import { SessionRevert } from "../../src/session/revert"
 import { SessionCompaction } from "../../src/session/compaction"
 import { MessageV2 } from "../../src/session/message-v2"
 import { Snapshot } from "../../src/snapshot"
+import { AppRuntime } from "../../src/effect/app-runtime"
 import { Log } from "../../src/util/log"
 import { Instance } from "../../src/project/instance"
 import { MessageID, PartID } from "../../src/session/schema"
@@ -460,12 +461,12 @@ describe("revert + compact workflow", () => {
           const u = await user(sid)
           await text(sid, u.id, `${file}:${next}`)
           const a = await assistant(sid, u.id, tmp.path)
-          const before = await Snapshot.track()
+          const before = await AppRuntime.runPromise(Snapshot.Service.use((svc) => svc.track()))
           if (!before) throw new Error("expected snapshot")
           await fs.writeFile(path.join(tmp.path, file), next)
-          const after = await Snapshot.track()
+          const after = await AppRuntime.runPromise(Snapshot.Service.use((svc) => svc.track()))
           if (!after) throw new Error("expected snapshot")
-          const patch = await Snapshot.patch(before)
+          const patch = await AppRuntime.runPromise(Snapshot.Service.use((svc) => svc.patch(before)))
           await Session.updatePart({
             id: PartID.ascending(),
             messageID: a.id,
@@ -550,12 +551,12 @@ describe("revert + compact workflow", () => {
           const u = await user(sid)
           await text(sid, u.id, `a.txt:${next}`)
           const a = await assistant(sid, u.id, tmp.path)
-          const before = await Snapshot.track()
+          const before = await AppRuntime.runPromise(Snapshot.Service.use((svc) => svc.track()))
           if (!before) throw new Error("expected snapshot")
           await fs.writeFile(path.join(tmp.path, "a.txt"), next)
-          const after = await Snapshot.track()
+          const after = await AppRuntime.runPromise(Snapshot.Service.use((svc) => svc.track()))
           if (!after) throw new Error("expected snapshot")
-          const patch = await Snapshot.patch(before)
+          const patch = await AppRuntime.runPromise(Snapshot.Service.use((svc) => svc.patch(before)))
           await Session.updatePart({
             id: PartID.ascending(),
             messageID: a.id,

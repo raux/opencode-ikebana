@@ -22,7 +22,7 @@ export async function InstanceBootstrap() {
   File.init()
   FileWatcher.init()
   Vcs.init()
-  Snapshot.init()
+  void BootstrapRuntime.runPromise(Snapshot.Service.use((svc) => svc.init()))
 
   Bus.subscribe(Command.Event.Executed, async (payload) => {
     if (payload.properties.name === Command.Default.INIT) {

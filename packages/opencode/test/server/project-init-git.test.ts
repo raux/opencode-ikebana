@@ -2,6 +2,7 @@ import { afterEach, describe, expect, spyOn, test } from "bun:test"
 import path from "path"
 import { GlobalBus } from "../../src/bus/global"
 import { Snapshot } from "../../src/snapshot"
+import { AppRuntime } from "../../src/effect/app-runtime"
 import { InstanceBootstrap } from "../../src/project/bootstrap"
 import { Instance } from "../../src/project/instance"
 import { Server } from "../../src/server/server"
@@ -64,7 +65,7 @@ describe("project.initGit endpoint", () => {
       await Instance.provide({
         directory: tmp.path,
         fn: async () => {
-          expect(await Snapshot.track()).toBeTruthy()
+          expect(await AppRuntime.runPromise(Snapshot.Service.use((svc) => svc.track()))).toBeTruthy()
         },
       })
     } finally {
