@@ -398,6 +398,17 @@ NOTE: At any point in time through this workflow you should feel free to ask the
               return Effect.runPromise(
                 Effect.gen(function* () {
                   const ctx = context(args, options)
+                  yield* Effect.annotateCurrentSpan({
+                    tool: item.id,
+                    sessionID: ctx.sessionID,
+                    messageID: input.processor.message.id,
+                    callID: ctx.callID,
+                  })
+                  yield* elog.info("tool.start", {
+                    tool: item.id,
+                    sessionID: ctx.sessionID,
+                    callID: ctx.callID,
+                  })
                   yield* plugin.trigger(
                     "tool.execute.before",
                     { tool: item.id, sessionID: ctx.sessionID, callID: ctx.callID },
@@ -421,8 +432,27 @@ NOTE: At any point in time through this workflow you should feel free to ask the
                   if (options.abortSignal?.aborted) {
                     yield* input.processor.completeToolCall(options.toolCallId, output)
                   }
+                  yield* elog.info("tool.done", {
+                    tool: item.id,
+                    sessionID: ctx.sessionID,
+                    callID: ctx.callID,
+                    truncated: output.metadata.truncated,
+                  })
                   return output
-                }),
+                }).pipe(
+                  Effect.withSpan(
+                    `Tool.${item.id}`,
+                    {
+                      attributes: {
+                        tool: item.id,
+                        sessionID: input.session.id,
+                        messageID: input.processor.message.id,
+                        callID: options.toolCallId,
+                      },
+                    },
+                    { captureStackTrace: false },
+                  ),
+                ),
               )
             },
           })
@@ -439,6 +469,13 @@ NOTE: At any point in time through this workflow you should feel free to ask the
             Effect.runPromise(
               Effect.gen(function* () {
                 const ctx = context(args, opts)
+                yield* Effect.annotateCurrentSpan({
+                  tool: key,
+                  sessionID: ctx.sessionID,
+                  messageID: input.processor.message.id,
+                  callID: ctx.callID,
+                })
+                yield* elog.info("tool.start", { tool: key, sessionID: ctx.sessionID, callID: ctx.callID })
                 yield* plugin.trigger(
                   "tool.execute.before",
                   { tool: key, sessionID: ctx.sessionID, callID: opts.toolCallId },
@@ -500,8 +537,27 @@ NOTE: At any point in time through this workflow you should feel free to ask the
                 if (opts.abortSignal?.aborted) {
                   yield* input.processor.completeToolCall(opts.toolCallId, output)
                 }
+                yield* elog.info("tool.done", {
+                  tool: key,
+                  sessionID: ctx.sessionID,
+                  callID: ctx.callID,
+                  truncated: output.metadata.truncated,
+                })
                 return output
-              }),
+              }).pipe(
+                Effect.withSpan(
+                  `Tool.${key}`,
+                  {
+                    attributes: {
+                      tool: key,
+                      sessionID: input.session.id,
+                      messageID: input.processor.message.id,
+                      callID: opts.toolCallId,
+                    },
+                  },
+                  { captureStackTrace: false },
+                ),
+              ),
             )
           tools[key] = item
         }
@@ -1327,6 +1383,14 @@ NOTE: At any point in time through this workflow you should feel free to ask the
 
             if (!lastUser) throw new Error("No user message found in stream. This should never happen.")
 
+            yield* Effect.annotateCurrentSpan({
+              sessionID,
+              step,
+              agent: lastUser.agent,
+              providerID: lastUser.model.providerID,
+              modelID: lastUser.model.modelID,
+            })
+
             const lastAssistantMsg = msgs.findLast(
               (msg) => msg.info.role === "assistant" && msg.info.id === lastAssistant?.id,
             )
@@ -1348,6 +1412,12 @@ NOTE: At any point in time through this workflow you should feel free to ask the
             }
 
             step++
+            yield* slog.info("step", {
+              step,
+              agent: lastUser.agent,
+              providerID: lastUser.model.providerID,
+              modelID: lastUser.model.modelID,
+            })
             if (step === 1)
               yield* title({
                 session,
@@ -1365,6 +1435,7 @@ NOTE: At any point in time through this workflow you should feel free to ask the
             }
 
             if (task?.type === "compaction") {
+              yield* slog.warn("compaction", { step, auto: task.auto, overflow: task.overflow })
               const result = yield* compaction.process({
                 messages: msgs,
                 parentID: lastUser.id,
@@ -1469,7 +1540,21 @@ NOTE: At any point in time through this workflow you should feel free to ask the
                 Effect.promise(() => SystemPrompt.environment(model)),
                 instruction.system().pipe(Effect.orDie),
                 MessageV2.toModelMessagesEffect(msgs, model),
-              ])
+              ]).pipe(
+                Effect.withSpan(
+                  "SessionPrompt.prepareInput",
+                  {
+                    attributes: {
+                      sessionID,
+                      step,
+                      agent: agent.name,
+                      providerID: model.providerID,
+                      modelID: model.id,
+                    },
+                  },
+                  { captureStackTrace: false },
+                ),
+              )
               const system = [...env, ...(skills ? [skills] : []), ...instructions]
               const format = lastUser.format ?? { type: "text" as const }
               if (format.type === "json_schema") system.push(STRUCTURED_OUTPUT_SYSTEM_PROMPT)

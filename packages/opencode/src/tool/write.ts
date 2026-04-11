@@ -24,6 +24,7 @@ export const WriteTool = Tool.defineEffect(
     const lsp = yield* LSP.Service
     const fs = yield* AppFileSystem.Service
     const filetime = yield* FileTime.Service
+    const format = yield* Format.Service
 
     return {
       description: DESCRIPTION,
@@ -56,7 +57,7 @@ export const WriteTool = Tool.defineEffect(
           )
 
           yield* fs.writeWithDirs(filepath, params.content)
-          yield* Effect.promise(() => Format.file(filepath))
+          yield* format.file(filepath)
           Bus.publish(File.Event.Edited, { file: filepath })
           yield* Effect.promise(() =>
             Bus.publish(FileWatcher.Event.Updated, {

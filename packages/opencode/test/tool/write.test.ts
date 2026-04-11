@@ -7,6 +7,7 @@ import { Instance } from "../../src/project/instance"
 import { LSP } from "../../src/lsp"
 import { AppFileSystem } from "../../src/filesystem"
 import { FileTime } from "../../src/file/time"
+import { Format } from "../../src/format"
 import { Tool } from "../../src/tool/tool"
 import { SessionID, MessageID } from "../../src/session/schema"
 import * as CrossSpawnSpawner from "../../src/effect/cross-spawn-spawner"
@@ -29,7 +30,20 @@ afterEach(async () => {
 })
 
 const it = testEffect(
-  Layer.mergeAll(LSP.defaultLayer, AppFileSystem.defaultLayer, FileTime.defaultLayer, CrossSpawnSpawner.defaultLayer),
+  Layer.mergeAll(
+    LSP.defaultLayer,
+    AppFileSystem.defaultLayer,
+    FileTime.defaultLayer,
+    CrossSpawnSpawner.defaultLayer,
+    Layer.succeed(
+      Format.Service,
+      Format.Service.of({
+        init: () => Effect.void,
+        status: () => Effect.succeed([]),
+        file: () => Effect.void,
+      }),
+    ),
+  ),
 )
 
 const init = Effect.fn("WriteToolTest.init")(function* () {

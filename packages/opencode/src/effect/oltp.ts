@@ -6,7 +6,7 @@ import { Flag } from "@/flag/flag"
 import { CHANNEL, VERSION } from "@/installation/meta"
 
 export namespace Observability {
-  const base = Flag.OTEL_EXPORTER_OTLP_ENDPOINT
+  const base = Flag.OTEL_EXPORTER_OTLP_ENDPOINT ?? (CHANNEL === "local" ? "http://127.0.0.1:27686" : undefined)
   export const enabled = !!base
 
   const resource = {
@@ -34,6 +34,7 @@ export namespace Observability {
     : Otlp.layerJson({
         baseUrl: base,
         loggerExportInterval: Duration.seconds(1),
+        tracerExportInterval: Duration.seconds(1),
         loggerMergeWithExisting: true,
         resource,
         headers,

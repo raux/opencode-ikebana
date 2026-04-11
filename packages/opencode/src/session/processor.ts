@@ -123,6 +123,14 @@ export namespace SessionProcessor {
         let aborted = false
         const slog = log.with({ sessionID: input.sessionID, messageID: input.assistantMessage.id })
 
+        yield* Effect.annotateCurrentSpan({
+          sessionID: input.sessionID,
+          messageID: input.assistantMessage.id,
+          agent: input.assistantMessage.agent,
+          providerID: input.model.providerID,
+          modelID: input.model.id,
+        })
+
         const parse = (e: unknown) =>
           MessageV2.fromError(e, {
             providerID: input.model.providerID,
@@ -531,7 +539,18 @@ export namespace SessionProcessor {
         })
 
         const process = Effect.fn("SessionProcessor.process")(function* (streamInput: LLM.StreamInput) {
-          yield* slog.info("process")
+          yield* Effect.annotateCurrentSpan({
+            sessionID: ctx.sessionID,
+            messageID: ctx.assistantMessage.id,
+            agent: ctx.assistantMessage.agent,
+            providerID: ctx.model.providerID,
+            modelID: ctx.model.id,
+          })
+          yield* slog.info("process", {
+            agent: ctx.assistantMessage.agent,
+            providerID: ctx.model.providerID,
+            modelID: ctx.model.id,
+          })
           ctx.needsCompaction = false
           ctx.shouldBreak = (yield* config.get()).experimental?.continue_loop_on_deny !== true
 
@@ -545,6 +564,17 @@ export namespace SessionProcessor {
                 Stream.tap((event) => handleEvent(event)),
                 Stream.takeUntil(() => ctx.needsCompaction),
                 Stream.runDrain,
+                Effect.withSpan(
+                  "SessionProcessor.stream",
+                  {
+                    attributes: {
+                      sessionID: ctx.sessionID,
+                      messageID: ctx.assistantMessage.id,
+                      agent: ctx.assistantMessage.agent,
+                    },
+                  },
+                  { captureStackTrace: false },
+                ),
               )
             }).pipe(
               Effect.onInterrupt(() =>
@@ -575,8 +605,19 @@ export namespace SessionProcessor {
               Effect.ensuring(cleanup()),
             )
 
-            if (ctx.needsCompaction) return "compact"
-            if (ctx.blocked || ctx.assistantMessage.error) return "stop"
+            if (ctx.needsCompaction) {
+              yield* slog.warn("compact", { finish: ctx.assistantMessage.finish, blocked: ctx.blocked })
+              return "compact"
+            }
+            if (ctx.blocked || ctx.assistantMessage.error) {
+              yield* slog.warn("stop", {
+                blocked: ctx.blocked,
+                finish: ctx.assistantMessage.finish,
+                hasError: !!ctx.assistantMessage.error,
+              })
+              return "stop"
+            }
+            yield* slog.info("continue", { finish: ctx.assistantMessage.finish })
             return "continue"
           })
         })
