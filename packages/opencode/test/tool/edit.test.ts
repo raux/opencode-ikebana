@@ -36,15 +36,7 @@ async function touch(file: string, time: number) {
 }
 
 const runtime = ManagedRuntime.make(
-  Layer.mergeAll(
-    LSP.defaultLayer,
-    FileTime.defaultLayer,
-    AppFileSystem.defaultLayer,
-    Format.defaultLayer,
-    Bus.layer,
-    Truncate.defaultLayer,
-    Agent.defaultLayer,
-  ),
+  Layer.mergeAll(LSP.defaultLayer, FileTime.defaultLayer, AppFileSystem.defaultLayer, Format.defaultLayer, Bus.layer, Truncate.defaultLayer, Agent.defaultLayer),
 )
 
 afterAll(async () => {
