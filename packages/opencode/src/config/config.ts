@@ -1426,10 +1426,11 @@ export namespace Config {
             }
 
             const dep = yield* installDependencies(dir).pipe(
-              Effect.catchAllCause((cause) => {
-                log.warn("background dependency install failed", { dir, error: String(cause) })
-                return Effect.void
-              }),
+              Effect.catchCause((cause) =>
+                Effect.sync(() => {
+                  log.warn("background dependency install failed", { dir, error: String(cause) })
+                }),
+              ),
               Effect.forkScoped,
             )
             deps.push(dep)
