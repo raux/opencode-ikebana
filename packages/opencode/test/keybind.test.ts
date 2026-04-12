@@ -162,6 +162,24 @@ describe("Keybind.match", () => {
     expect(Keybind.match(a, b)).toBe(true)
   })
 
+  test("should match ctrl shortcuts by baseCode from alternate layouts", () => {
+    const a: Keybind.Info = { ctrl: true, meta: false, shift: false, leader: false, name: "c" }
+    const b: Keybind.Info = { ctrl: true, meta: false, shift: false, leader: false, name: "ㅊ", baseCode: 99 }
+    expect(Keybind.match(a, b)).toBe(true)
+  })
+
+  test("should still match the reported character when baseCode is also present", () => {
+    const a: Keybind.Info = { ctrl: true, meta: false, shift: false, leader: false, name: "ㅊ" }
+    const b: Keybind.Info = { ctrl: true, meta: false, shift: false, leader: false, name: "ㅊ", baseCode: 99 }
+    expect(Keybind.match(a, b)).toBe(true)
+  })
+
+  test("should not match a different shortcut just because baseCode exists", () => {
+    const a: Keybind.Info = { ctrl: true, meta: false, shift: false, leader: false, name: "x" }
+    const b: Keybind.Info = { ctrl: true, meta: false, shift: false, leader: false, name: "ㅊ", baseCode: 99 }
+    expect(Keybind.match(a, b)).toBe(false)
+  })
+
   test("should match super+shift combination", () => {
     const a: Keybind.Info = { ctrl: false, meta: false, shift: true, super: true, leader: false, name: "z" }
     const b: Keybind.Info = { ctrl: false, meta: false, shift: true, super: true, leader: false, name: "z" }
@@ -417,5 +435,70 @@ describe("Keybind.parse", () => {
         name: "z",
       },
     ])
+  })
+})
+
+describe("Keybind.parseOne", () => {
+  test("should parse a single keybind", () => {
+    expect(Keybind.parseOne("ctrl+x")).toEqual({
+      ctrl: true,
+      meta: false,
+      shift: false,
+      leader: false,
+      name: "x",
+    })
+  })
+
+  test("should reject multiple keybinds", () => {
+    expect(() => Keybind.parseOne("ctrl+x,ctrl+y")).toThrow("Expected exactly one keybind")
+  })
+})
+
+describe("Keybind.fromParsedKey", () => {
+  test("should preserve baseCode from ParsedKey", () => {
+    const result = Keybind.fromParsedKey({
+      name: "ㅊ",
+      ctrl: true,
+      meta: false,
+      shift: false,
+      option: false,
+      number: false,
+      sequence: "ㅊ",
+      raw: "\x1b[12618::99;5u",
+      eventType: "press",
+      source: "kitty",
+      baseCode: 99,
+    })
+
+    expect(result).toEqual({
+      name: "ㅊ",
+      ctrl: true,
+      meta: false,
+      shift: false,
+      super: false,
+      leader: false,
+      baseCode: 99,
+    })
+  })
+
+  test("should ignore leader unless explicitly requested", () => {
+    const key = {
+      name: "ㅊ",
+      ctrl: true,
+      meta: false,
+      shift: false,
+      option: false,
+      number: false,
+      sequence: "ㅊ",
+      raw: "\x1b[12618::99;5u",
+      eventType: "press" as const,
+      source: "kitty" as const,
+      baseCode: 99,
+    }
+
+    expect(Keybind.matchParsedKey("ctrl+c", key)).toBe(true)
+    expect(Keybind.matchParsedKey("ctrl+x,ctrl+c", key)).toBe(true)
+    expect(Keybind.matchParsedKey("ctrl+x,ctrl+y", key)).toBe(false)
+    expect(Keybind.matchParsedKey("ctrl+c", key, true)).toBe(false)
   })
 })

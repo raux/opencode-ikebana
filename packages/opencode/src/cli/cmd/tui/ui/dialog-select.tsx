@@ -195,8 +195,8 @@ export function DialogSelect<T>(props: DialogSelectProps<T>) {
   useKeyboard((evt) => {
     setStore("input", "keyboard")
 
-    if (evt.name === "up" || (evt.ctrl && evt.name === "p")) move(-1)
-    if (evt.name === "down" || (evt.ctrl && evt.name === "n")) move(1)
+    if (evt.name === "up" || Keybind.matchParsedKey("ctrl+p", evt)) move(-1)
+    if (evt.name === "down" || Keybind.matchParsedKey("ctrl+n", evt)) move(1)
     if (evt.name === "pageup") move(-10)
     if (evt.name === "pagedown") move(10)
     if (evt.name === "home") moveTo(0)

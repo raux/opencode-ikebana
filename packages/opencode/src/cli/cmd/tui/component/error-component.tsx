@@ -5,6 +5,7 @@ import { createSignal } from "solid-js"
 import { Installation } from "@/installation"
 import { win32FlushInputBuffer } from "../win32"
 import { getScrollAcceleration } from "../util/scroll"
+import { Keybind } from "@/util/keybind"
 
 export function ErrorComponent(props: {
   error: Error
@@ -25,7 +26,7 @@ export function ErrorComponent(props: {
   }
 
   useKeyboard((evt) => {
-    if (evt.ctrl && evt.name === "c") {
+    if (Keybind.matchParsedKey("ctrl+c", evt)) {
       handleExit()
     }
   })

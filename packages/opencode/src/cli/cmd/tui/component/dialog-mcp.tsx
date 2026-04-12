@@ -47,7 +47,7 @@ export function DialogMcp() {
 
   const keybinds = createMemo(() => [
     {
-      keybind: Keybind.parse("space")[0],
+      keybind: Keybind.parseOne("space"),
       title: "toggle",
       onTrigger: async (option: DialogSelectOption<string>) => {
         // Prevent toggling while an operation is already in progress

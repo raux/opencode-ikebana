@@ -59,6 +59,7 @@ import { TuiConfigProvider, useTuiConfig } from "./context/tui-config"
 import { TuiConfig } from "@/config/tui"
 import { createTuiApi, TuiPluginRuntime, type RouteMap } from "./plugin"
 import { FormatError, FormatUnknownError } from "@/cli/error"
+import { Keybind } from "@/util/keybind"
 
 async function getTerminalBackgroundColor(): Promise<"dark" | "light"> {
   // can't set raw mode if not a TTY
@@ -310,7 +311,7 @@ function App(props: { onSnapshot?: () => Promise<string[]> }) {
     // - Ctrl+C copies and dismisses selection
     // - Esc dismisses selection
     // - Most other key input dismisses selection and is passed through
-    if (evt.ctrl && evt.name === "c") {
+    if (Keybind.matchParsedKey("ctrl+c", evt)) {
       if (!Selection.copy(renderer, toast)) {
         renderer.clearSelection()
         return

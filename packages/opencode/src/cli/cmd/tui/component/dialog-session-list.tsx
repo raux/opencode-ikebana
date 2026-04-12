@@ -162,7 +162,7 @@ export function DialogSessionList() {
           },
         },
         {
-          keybind: Keybind.parse("ctrl+w")[0],
+          keybind: Keybind.parseOne("ctrl+w"),
           title: "new workspace",
           side: "right",
           disabled: !Flag.OPENCODE_EXPERIMENTAL_WORKSPACES,

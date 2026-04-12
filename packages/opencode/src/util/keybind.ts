@@ -6,15 +6,70 @@ export namespace Keybind {
    * Keybind info derived from OpenTUI's ParsedKey with our custom `leader` field.
    * This ensures type compatibility and catches missing fields at compile time.
    */
-  export type Info = Pick<ParsedKey, "name" | "ctrl" | "meta" | "shift" | "super"> & {
+  export type Info = Pick<ParsedKey, "name" | "ctrl" | "meta" | "shift" | "super" | "baseCode"> & {
     leader: boolean // our custom field
+  }
+
+  function getBaseCodeName(baseCode: number | undefined): string | undefined {
+    if (baseCode === undefined || baseCode < 32 || baseCode === 127) {
+      return undefined
+    }
+
+    try {
+      const name = String.fromCodePoint(baseCode)
+
+      if (name.length === 1 && name >= "A" && name <= "Z") {
+        return name.toLowerCase()
+      }
+
+      return name
+    } catch {
+      return undefined
+    }
   }
 
   export function match(a: Info | undefined, b: Info): boolean {
     if (!a) return false
     const normalizedA = { ...a, super: a.super ?? false }
     const normalizedB = { ...b, super: b.super ?? false }
-    return isDeepEqual(normalizedA, normalizedB)
+    if (isDeepEqual(normalizedA, normalizedB)) {
+      return true
+    }
+
+    const modifiersA = {
+      ctrl: normalizedA.ctrl,
+      meta: normalizedA.meta,
+      shift: normalizedA.shift,
+      super: normalizedA.super,
+      leader: normalizedA.leader,
+    }
+    const modifiersB = {
+      ctrl: normalizedB.ctrl,
+      meta: normalizedB.meta,
+      shift: normalizedB.shift,
+      super: normalizedB.super,
+      leader: normalizedB.leader,
+    }
+
+    if (!isDeepEqual(modifiersA, modifiersB)) {
+      return false
+    }
+
+    return (
+      normalizedA.name === normalizedB.name ||
+      getBaseCodeName(normalizedA.baseCode) === normalizedB.name ||
+      getBaseCodeName(normalizedB.baseCode) === normalizedA.name
+    )
+  }
+
+  export function parseOne(key: string): Info {
+    const parsed = parse(key)
+
+    if (parsed.length !== 1) {
+      throw new Error(`Expected exactly one keybind, got ${parsed.length}: ${key}`)
+    }
+
+    return parsed[0]!
   }
 
   /**
@@ -28,8 +83,21 @@ export namespace Keybind {
       meta: key.meta,
       shift: key.shift,
       super: key.super ?? false,
+      baseCode: key.baseCode,
       leader,
     }
+  }
+
+  export function matchParsedKey(binding: Info | string | undefined, key: ParsedKey, leader = false): boolean {
+    const bindings = typeof binding === "string" ? parse(binding) : binding ? [binding] : []
+
+    if (!bindings.length) {
+      return false
+    }
+
+    const parsed = fromParsedKey(key, leader)
+
+    return bindings.some((item) => match(item, parsed))
   }
 
   export function toString(info: Info | undefined): string {
