@@ -270,6 +270,7 @@ describe("SyncProvider", () => {
       expect(sync.data.message.ses_1[0]?.id).toBe("msg_1")
       expect(sync.data.part.msg_1[0]).toMatchObject({ type: "text", text: "part-ws_a" })
       expect(sync.data.session_diff.ses_1[0]?.file).toBe("ws_a.ts")
+      expect(sync.data.session_diff.ses_1[0]).not.toHaveProperty("patch")
 
       log.length = 0
       project.workspace.set("ws_b")
@@ -285,6 +286,7 @@ describe("SyncProvider", () => {
       expect(sync.data.message.ses_1[0]?.id).toBe("msg_1")
       expect(sync.data.part.msg_1[0]).toMatchObject({ type: "text", text: "part-ws_b" })
       expect(sync.data.session_diff.ses_1[0]?.file).toBe("ws_b.ts")
+      expect(sync.data.session_diff.ses_1[0]).not.toHaveProperty("patch")
     } finally {
       app.renderer.destroy()
     }

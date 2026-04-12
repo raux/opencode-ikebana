@@ -31,6 +31,16 @@ import { batch, createEffect, on } from "solid-js"
 import { Log } from "@/util/log"
 import { ConsoleState, emptyConsoleState, type ConsoleState as ConsoleStateType } from "@/config/console-state"
 
+type SessionDiffSummary = Pick<Snapshot.FileDiff, "file" | "additions" | "deletions">
+
+function summarizeDiff(diff?: Snapshot.FileDiff[]): SessionDiffSummary[] {
+  return (diff ?? []).map((item) => ({
+    file: item.file,
+    additions: item.additions,
+    deletions: item.deletions,
+  }))
+}
+
 export const { use: useSync, provider: SyncProvider } = createSimpleContext({
   name: "Sync",
   init: () => {
@@ -55,7 +65,7 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
         [sessionID: string]: SessionStatus
       }
       session_diff: {
-        [sessionID: string]: Snapshot.FileDiff[]
+        [sessionID: string]: SessionDiffSummary[]
       }
       todo: {
         [sessionID: string]: Todo[]
@@ -193,7 +203,7 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
           break
 
         case "session.diff":
-          setStore("session_diff", event.properties.sessionID, event.properties.diff)
+          setStore("session_diff", event.properties.sessionID, summarizeDiff(event.properties.diff))
           break
 
         case "session.deleted": {
@@ -503,7 +513,7 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
               for (const message of messages.data!) {
                 draft.part[message.info.id] = message.parts
               }
-              draft.session_diff[sessionID] = diff.data ?? []
+              draft.session_diff[sessionID] = summarizeDiff(diff.data)
             }),
           )
           fullSyncedSessions.add(sessionID)
