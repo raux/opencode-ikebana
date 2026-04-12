@@ -22,7 +22,7 @@ import { Instance, type InstanceContext } from "../project/instance"
 import { LSPServer } from "../lsp/server"
 import { Installation } from "@/installation"
 import { ConfigMarkdown } from "./markdown"
-import { constants, existsSync } from "fs"
+import { existsSync } from "fs"
 import { Bus } from "@/bus"
 import { GlobalBus } from "@/bus/global"
 import { Event } from "../server/event"
@@ -140,15 +140,6 @@ export namespace Config {
 
   type Package = {
     dependencies?: Record<string, string>
-  }
-
-  async function isWritable(dir: string) {
-    try {
-      await fsNode.access(dir, constants.W_OK)
-      return true
-    } catch {
-      return false
-    }
   }
 
   function rel(item: string, patterns: string[]) {
@@ -1283,8 +1274,47 @@ export namespace Config {
           return yield* cachedGlobal
         })
 
+        const install = Effect.fnUntraced(function* (dir: string) {
+          const pkg = path.join(dir, "package.json")
+          const gitignore = path.join(dir, ".gitignore")
+          const target = Installation.isLocal() ? "*" : Installation.VERSION
+          const json = yield* fs.readJson(pkg).pipe(
+            Effect.catch(() => Effect.succeed({} satisfies Package)),
+            Effect.map((x): Package => (isRecord(x) ? (x as Package) : {})),
+          )
+          const hasDep = json.dependencies?.["@opencode-ai/plugin"] === target
+          const hasIgnore = yield* fs.existsSafe(gitignore)
+
+          if (!hasDep) {
+            yield* fs.writeJson(pkg, {
+              ...json,
+              dependencies: {
+                ...json.dependencies,
+                "@opencode-ai/plugin": target,
+              },
+            })
+          }
+
+          if (!hasIgnore) {
+            yield* fs.writeFileString(
+              gitignore,
+              ["node_modules", "package.json", "package-lock.json", "bun.lock", ".gitignore"].join("\n"),
+            )
+          }
+
+          if (hasDep && hasIgnore) return
+
+          yield* Effect.promise(() => Npm.install(dir))
+        })
+
         const installDependencies = Effect.fn("Config.installDependencies")(function* (dir: string) {
-          if (!(yield* Effect.promise(() => isWritable(dir)))) return
+          if (
+            !(yield* fs.access(dir, { writable: true }).pipe(
+              Effect.as(true),
+              Effect.orElseSucceed(() => false),
+            ))
+          )
+            return
 
           yield* Effect.acquireUseRelease(
             Effect.promise((signal) =>
@@ -1292,40 +1322,7 @@ export namespace Config {
                 signal,
               }),
             ),
-            () => {
-              const pkg = path.join(dir, "package.json")
-              const gitignore = path.join(dir, ".gitignore")
-              const target = Installation.isLocal() ? "*" : Installation.VERSION
-              return Effect.gen(function* () {
-                const json = yield* fs.readJson(pkg).pipe(
-                  Effect.catch(() => Effect.succeed({} satisfies Package)),
-                  Effect.map((x): Package => (isRecord(x) ? (x as Package) : {})),
-                )
-                const hasDep = json.dependencies?.["@opencode-ai/plugin"] === target
-                const hasIgnore = yield* fs.existsSafe(gitignore)
-
-                if (!hasDep) {
-                  yield* fs.writeJson(pkg, {
-                    ...json,
-                    dependencies: {
-                      ...json.dependencies,
-                      "@opencode-ai/plugin": target,
-                    },
-                  })
-                }
-
-                if (!hasIgnore) {
-                  yield* fs.writeFileString(
-                    gitignore,
-                    ["node_modules", "package.json", "package-lock.json", "bun.lock", ".gitignore"].join("\n"),
-                  )
-                }
-
-                if (hasDep && hasIgnore) return
-
-                yield* Effect.promise(() => Npm.install(dir))
-              })
-            },
+            () => install(dir),
             (lease) => Effect.promise(() => lease.release()),
           )
         })
