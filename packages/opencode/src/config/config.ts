@@ -35,7 +35,7 @@ import type { ConsoleState } from "./console-state"
 import { AppFileSystem } from "@/filesystem"
 import { InstanceState } from "@/effect/instance-state"
 import { makeRuntime } from "@/effect/run-service"
-import { Duration, Effect, Layer, Option, Context } from "effect"
+import { Duration, Effect, Fiber, Layer, Option, Context } from "effect"
 import { Flock } from "@/util/flock"
 import { isPathPluginSpec, parsePluginSpecifier, resolvePathPluginTarget } from "@/plugin/shared"
 import { Npm } from "@/npm"
@@ -1064,7 +1064,7 @@ export namespace Config {
   type State = {
     config: Info
     directories: string[]
-    deps: Promise<void>[]
+    deps: Fiber.Fiber<void, never>[]
     consoleState: ConsoleState
   }
 
@@ -1409,7 +1409,7 @@ export namespace Config {
             log.debug("loading config from OPENCODE_CONFIG_DIR", { path: Flag.OPENCODE_CONFIG_DIR })
           }
 
-          const deps: Promise<void>[] = []
+          const deps: Fiber.Fiber<void, never>[] = []
 
           for (const dir of unique(directories)) {
             if (dir.endsWith(".opencode") || dir === Flag.OPENCODE_CONFIG_DIR) {
@@ -1423,10 +1423,13 @@ export namespace Config {
               }
             }
 
-            const dep = Effect.runPromise(installDependencies(dir))
-            void dep.catch((err) => {
-              log.warn("background dependency install failed", { dir, error: err })
-            })
+            const dep = yield* installDependencies(dir).pipe(
+              Effect.catch((err) => {
+                log.warn("background dependency install failed", { dir, error: err })
+                return Effect.void
+              }),
+              Effect.forkScoped,
+            )
             deps.push(dep)
 
             result.command = mergeDeep(result.command ?? {}, yield* Effect.promise(() => loadCommand(dir)))
@@ -1563,7 +1566,9 @@ export namespace Config {
         })
 
         const waitForDependencies = Effect.fn("Config.waitForDependencies")(function* () {
-          yield* InstanceState.useEffect(state, (s) => Effect.promise(() => Promise.all(s.deps).then(() => undefined)))
+          yield* InstanceState.useEffect(state, (s) =>
+            Effect.forEach(s.deps, Fiber.join, { concurrency: "unbounded" }).pipe(Effect.asVoid),
+          )
         })
 
         const update = Effect.fn("Config.update")(function* (config: Info) {
