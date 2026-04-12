@@ -225,6 +225,19 @@ export default function Home() {
   const subscribeUrl = createMemo(() => (workspaceID() ? `/workspace/${workspaceID()}/go` : "/auth"))
   const i18n = useI18n()
   const language = useLanguage()
+  const rows = createMemo(
+    () =>
+      [
+        ["GLM-5.0", i18n.t("go.supported.selfHosted")],
+        ["GLM-5.1", i18n.t("go.supported.selfHosted")],
+        ["Kimi K2.5", i18n.t("go.supported.official")],
+        ["MiMo-V2-Pro", i18n.t("go.supported.official")],
+        ["MiMo-V2-Omni", i18n.t("go.supported.official")],
+        ["MiniMax M2.5", i18n.t("go.supported.official")],
+        ["MiniMax M2.7", i18n.t("go.supported.official")],
+      ] as const,
+  )
+
   return (
     <main data-page="go">
       {/*<HttpHeader name="Cache-Control" value="public, max-age=1, s-maxage=3600, stale-while-revalidate=86400" />*/}
@@ -378,6 +391,30 @@ export default function Home() {
             <LimitsGraph href={language.route("/docs/go/#usage-limits")} />
           </section>
 
+          <section data-component="supported">
+            <div data-slot="section-title">
+              <h3>{i18n.t("go.supported.title")}</h3>
+            </div>
+            <table>
+              <thead>
+                <tr>
+                  <th>{i18n.t("go.supported.model")}</th>
+                  <th>{i18n.t("go.supported.source")}</th>
+                </tr>
+              </thead>
+              <tbody>
+                <For each={rows()}>
+                  {(row) => (
+                    <tr>
+                      <td>{row[0]}</td>
+                      <td>{row[1]}</td>
+                    </tr>
+                  )}
+                </For>
+              </tbody>
+            </table>
+          </section>
+
           <section data-component="problem">
             <div data-slot="section-title">
               <h3>{i18n.t("go.problem.title")}</h3>
@@ -393,9 +430,6 @@ export default function Home() {
               </li>
               <li>
                 <span>[*]</span> {i18n.t("go.problem.item3")}
-              </li>
-              <li>
-                <span>[*]</span> {i18n.t("go.problem.item4")}
               </li>
             </ul>
           </section>

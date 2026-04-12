@@ -259,7 +259,7 @@ export const dict = {
   "go.banner.text": "GLM-5.1 — profitez de limites d'utilisation 2x jusqu'au 20 avril",
   "go.hero.title": "Modèles de code à faible coût pour tous",
   "go.hero.body":
-    "Go apporte le codage agentique aux programmeurs du monde entier, avec des limites généreuses et un accès fiable aux modèles open source les plus performants, non quantifiés et livrés dans toute leur capacité, pour que vous puissiez créer avec des agents puissants sans vous soucier du coût ou de la disponibilité.",
+    "Go apporte le codage agentique aux programmeurs du monde entier. Offrant des limites généreuses et un accès fiable aux modèles open source les plus capables, pour que vous puissiez construire avec des agents puissants sans vous soucier du coût ou de la disponibilité.",
 
   "go.cta.start": "S'abonner à Go",
   "go.cta.template": "{{text}} {{price}}",
@@ -304,7 +304,11 @@ export const dict = {
   "go.problem.item1": "Prix d'abonnement bas",
   "go.problem.item2": "Limites généreuses et accès fiable",
   "go.problem.item3": "Conçu pour autant de programmeurs que possible",
-  "go.problem.item4": "Inclut GLM-5.1, GLM-5, Kimi K2.5, MiMo-V2-Pro, MiMo-V2-Omni, MiniMax M2.5 et MiniMax M2.7",
+  "go.supported.title": "Modèles pris en charge",
+  "go.supported.model": "Modèle",
+  "go.supported.source": "Source",
+  "go.supported.selfHosted": "Auto-hébergé, non quantifié",
+  "go.supported.official": "API officielle",
   "go.how.title": "Comment fonctionne Go",
   "go.how.body":
     "Go commence à $5 pour le premier mois, puis 10 $/mois. Vous pouvez l'utiliser avec OpenCode ou n'importe quel agent.",

@@ -255,7 +255,7 @@ export const dict = {
   "go.banner.text": "GLM-5.1 — få 2x bruksgrenser frem til 20. april",
   "go.hero.title": "Rimelige kodemodeller for alle",
   "go.hero.body":
-    "Go bringer agent-koding til programmerere over hele verden, med rause grenser og pålitelig tilgang til de mest kapable åpen kildekode-modellene, levert fullt ut og uten kvantisering, slik at du kan bygge med kraftige agenter uten å bekymre deg for kostnader eller tilgjengelighet.",
+    "Go bringer agent-koding til programmerere over hele verden. Med rause grenser og pålitelig tilgang til de mest kapable åpen kildekode-modellene, kan du bygge med kraftige agenter uten å bekymre deg for kostnader eller tilgjengelighet.",
 
   "go.cta.start": "Abonner på Go",
   "go.cta.template": "{{text}} {{price}}",
@@ -300,7 +300,11 @@ export const dict = {
   "go.problem.item1": "Rimelig abonnementspris",
   "go.problem.item2": "Rause grenser og pålitelig tilgang",
   "go.problem.item3": "Bygget for så mange programmerere som mulig",
-  "go.problem.item4": "Inkluderer GLM-5.1, GLM-5, Kimi K2.5, MiMo-V2-Pro, MiMo-V2-Omni, MiniMax M2.5 og MiniMax M2.7",
+  "go.supported.title": "Støttede modeller",
+  "go.supported.model": "Modell",
+  "go.supported.source": "Kilde",
+  "go.supported.selfHosted": "Selvhostet, ukvantisert",
+  "go.supported.official": "Offisiell API",
   "go.how.title": "Hvordan Go fungerer",
   "go.how.body":
     "Go starter på $5 for den første måneden, deretter $10/måned. Du kan bruke det med OpenCode eller hvilken som helst agent.",

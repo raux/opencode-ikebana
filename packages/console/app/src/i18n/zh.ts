@@ -245,7 +245,7 @@ export const dict = {
   "go.banner.text": "GLM-5.1 限时优惠！4 月 20 日前可享 2 倍使用额度",
   "go.hero.title": "人人可用的低成本编程模型",
   "go.hero.body":
-    "Go 将代理编程带给全世界的程序员，提供充裕的使用额度，并可稳定使用具备完整能力且未经量化的最强开源模型，让您可以利用强大的代理进行构建，而无需担心成本或可用性。",
+    "Go 将代理编程带给全世界的程序员。提供充裕的限额和对最强大的开源模型的可靠访问，让您可以利用强大的代理进行构建，而无需担心成本或可用性。",
 
   "go.cta.start": "订阅 Go",
   "go.cta.template": "{{text}} {{price}}",
@@ -289,7 +289,11 @@ export const dict = {
   "go.problem.item1": "低成本订阅定价",
   "go.problem.item2": "充裕的限额和可靠的访问",
   "go.problem.item3": "为尽可能多的程序员打造",
-  "go.problem.item4": "包含 GLM-5.1, GLM-5, Kimi K2.5, MiMo-V2-Pro, MiMo-V2-Omni, MiniMax M2.5 和 MiniMax M2.7",
+  "go.supported.title": "支持的模型",
+  "go.supported.model": "模型",
+  "go.supported.source": "来源",
+  "go.supported.selfHosted": "自托管，未量化",
+  "go.supported.official": "官方 API",
   "go.how.title": "Go 如何工作",
   "go.how.body": "Go 起价为首月 $5，之后 $10/月。您可以将其与 OpenCode 或任何代理搭配使用。",
   "go.how.step1.title": "创建账户",

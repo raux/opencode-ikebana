@@ -251,7 +251,7 @@ export const dict = {
   "go.banner.text": "GLM-5.1 — 4월 20일까지 사용 한도 2배 제공",
   "go.hero.title": "모두를 위한 저비용 코딩 모델",
   "go.hero.body":
-    "Go는 전 세계 프로그래머들에게 에이전트 코딩을 제공합니다. 넉넉한 한도와 가장 강력한 오픈 소스 모델에 대한 안정적인 접근을 제공하며, 이 모델들은 양자화되지 않고 완전한 성능 그대로 제공되므로 비용이나 가용성을 걱정하지 않고 강력한 에이전트로 빌드할 수 있습니다.",
+    "Go는 전 세계 프로그래머들에게 에이전트 코딩을 제공합니다. 가장 유능한 오픈 소스 모델에 대한 넉넉한 한도와 안정적인 액세스를 제공하므로, 비용이나 가용성 걱정 없이 강력한 에이전트로 빌드할 수 있습니다.",
 
   "go.cta.start": "Go 구독하기",
   "go.cta.template": "{{text}} {{price}}",
@@ -297,7 +297,11 @@ export const dict = {
   "go.problem.item1": "저렴한 구독 가격",
   "go.problem.item2": "넉넉한 한도와 안정적인 액세스",
   "go.problem.item3": "가능한 한 많은 프로그래머를 위해 제작됨",
-  "go.problem.item4": "GLM-5.1, GLM-5, Kimi K2.5, MiMo-V2-Pro, MiMo-V2-Omni, MiniMax M2.5, MiniMax M2.7 포함",
+  "go.supported.title": "지원되는 모델",
+  "go.supported.model": "모델",
+  "go.supported.source": "출처",
+  "go.supported.selfHosted": "자체 호스팅, 비양자화",
+  "go.supported.official": "공식 API",
   "go.how.title": "Go 작동 방식",
   "go.how.body": "Go는 첫 달 $5, 이후 $10/월로 시작합니다. OpenCode 또는 어떤 에이전트와도 함께 사용할 수 있습니다.",
   "go.how.step1.title": "계정 생성",

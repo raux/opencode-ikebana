@@ -257,7 +257,7 @@ export const dict = {
   "go.banner.text": "GLM-5.1 — 20 Nisan'a kadar 2 kat kullanım limiti",
   "go.hero.title": "Herkes için düşük maliyetli kodlama modelleri",
   "go.hero.body":
-    "Go, ajan tabanlı kodlamayı dünya çapındaki programcılara getiriyor; cömert limitler ve en yetenekli açık kaynak modellere güvenilir erişim sunuyor. Bu modeller nicemlendirilmemiştir ve tüm yetenekleriyle sunulur; böylece maliyet veya erişilebilirlik konusunda endişelenmeden güçlü ajanlarla geliştirme yapabilirsiniz.",
+    "Go, dünya çapındaki programcılara ajan tabanlı kodlama getiriyor. En yetenekli açık kaynaklı modellere cömert limitler ve güvenilir erişim sunarak, maliyet veya erişilebilirlik konusunda endişelenmeden güçlü ajanlarla geliştirme yapmanızı sağlar.",
 
   "go.cta.start": "Go'ya abone ol",
   "go.cta.template": "{{text}} {{price}}",
@@ -303,7 +303,11 @@ export const dict = {
   "go.problem.item1": "Düşük maliyetli abonelik fiyatlandırması",
   "go.problem.item2": "Cömert limitler ve güvenilir erişim",
   "go.problem.item3": "Mümkün olduğunca çok programcı için geliştirildi",
-  "go.problem.item4": "GLM-5.1, GLM-5, Kimi K2.5, MiMo-V2-Pro, MiMo-V2-Omni, MiniMax M2.5 ve MiniMax M2.7 içerir",
+  "go.supported.title": "Desteklenen modeller",
+  "go.supported.model": "Model",
+  "go.supported.source": "Kaynak",
+  "go.supported.selfHosted": "Kendi barındırma, nicemlendirilmemiş",
+  "go.supported.official": "Resmi API",
   "go.how.title": "Go nasıl çalışır?",
   "go.how.body":
     "Go ilk ay $5, sonrasında ayda 10$ fiyatıyla başlar. OpenCode veya herhangi bir ajanla kullanabilirsiniz.",
