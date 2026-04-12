@@ -15,9 +15,13 @@ import * as QRCode from "qrcode"
 const log = Log.create({ service: "serve" })
 
 type PairPayload = {
-  v: 1
   serverID?: string
   relayURL: string
+  relaySecret: string
+  hosts: string[]
+}
+
+type PairQRCodePayload = {
   relaySecret: string
   hosts: string[]
 }
@@ -102,12 +106,12 @@ function hosts(hostname: string, port: number, advertised: string[] = [], includ
   return [...preferred, ...entries.map((item) => item.url)]
 }
 
-function pairLink(pair: unknown) {
-  return `mobilevoice:///?pair=${encodeURIComponent(JSON.stringify(pair))}`
-}
-
-function pairServerID(input: { relayURL: string; relaySecret: string }) {
-  return createHash("sha256").update(`${input.relayURL}|${input.relaySecret}`).digest("hex").slice(0, 16)
+function pairLink(pair: PairQRCodePayload) {
+  const payload: PairQRCodePayload = {
+    relaySecret: pair.relaySecret,
+    hosts: pair.hosts,
+  }
+  return `mobilevoice:///?pair=${encodeURIComponent(JSON.stringify(payload))}`
 }
 
 function secretHash(input: string) {
@@ -240,8 +244,6 @@ export const ServeCommand = cmd({
 
       console.log("printing connect qr without starting the server")
       await printPairQR({
-        v: 1,
-        serverID: pairServerID({ relayURL, relaySecret }),
         relayURL,
         relaySecret,
         hosts: pairHosts,
@@ -274,8 +276,6 @@ export const ServeCommand = cmd({
       })
       const pair = started ??
         PushRelay.pair() ?? {
-          v: 1 as const,
-          serverID: pairServerID({ relayURL, relaySecret }),
           relayURL,
           relaySecret,
           hosts: hosts(host, port, advertiseHosts),

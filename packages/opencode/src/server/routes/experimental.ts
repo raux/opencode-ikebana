@@ -21,9 +21,6 @@ import { Agent } from "@/agent/agent"
 
 const PushPairPayload = z
   .object({
-    v: z.literal(1),
-    serverID: z.string().optional(),
-    relayURL: z.string(),
     relaySecret: z.string(),
     hosts: z.array(z.string()),
   })
@@ -49,12 +46,16 @@ const pushPairQROptions = {
   width: 256,
 }
 
-function pushPairLink(payload: z.infer<typeof PushPairPayload>) {
+function pushPairLink(input: { relaySecret: string; hosts: string[] }) {
+  const payload: z.infer<typeof PushPairPayload> = {
+    relaySecret: input.relaySecret,
+    hosts: input.hosts,
+  }
   return `mobilevoice:///?pair=${encodeURIComponent(JSON.stringify(payload))}`
 }
 
-async function pushPairQRCode(payload: z.infer<typeof PushPairPayload>) {
-  return QRCode.toDataURL(pushPairLink(payload), pushPairQROptions)
+async function pushPairQRCode(input: { relaySecret: string; hosts: string[] }) {
+  return QRCode.toDataURL(pushPairLink(input), pushPairQROptions)
 }
 
 const ConsoleOrgOption = z.object({

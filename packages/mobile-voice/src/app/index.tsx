@@ -370,7 +370,6 @@ function formatWorkingDirectory(directory?: string): string {
 type DropdownMode = "none" | "server" | "session"
 
 type Pair = {
-  v: 1
   serverID?: string
   relayURL: string
   relaySecret: string
@@ -454,18 +453,19 @@ type Cam = {
 
 function parsePairShape(data: unknown): Pair | undefined {
   if (!data || typeof data !== "object") return
-  if ((data as { v?: unknown }).v !== 1) return
-  if (typeof (data as { relayURL?: unknown }).relayURL !== "string") return
+  const version = (data as { v?: unknown }).v
+  if (version !== undefined && version !== 1) return
   if (typeof (data as { relaySecret?: unknown }).relaySecret !== "string") return
   if (!Array.isArray((data as { hosts?: unknown }).hosts)) return
   const hosts = (data as { hosts: unknown[] }).hosts.filter((item): item is string => typeof item === "string")
   if (!hosts.length) return
+  const relayURLRaw = (data as { relayURL?: unknown }).relayURL
+  const relayURL = typeof relayURLRaw === "string" && relayURLRaw.length > 0 ? relayURLRaw : DEFAULT_RELAY_URL
   const serverIDRaw = (data as { serverID?: unknown }).serverID
   const serverID = typeof serverIDRaw === "string" && serverIDRaw.length > 0 ? serverIDRaw : undefined
   return {
-    v: 1,
     serverID,
-    relayURL: (data as { relayURL: string }).relayURL,
+    relayURL,
     relaySecret: (data as { relaySecret: string }).relaySecret,
     hosts,
   }
