@@ -33,6 +33,21 @@ async function touch(file: string, time: number) {
   await fs.utimes(file, date, date)
 }
 
+async function wait(check: () => void, timeout = 1_000) {
+  const end = Date.now() + timeout
+  let err: unknown
+  while (Date.now() < end) {
+    try {
+      check()
+      return
+    } catch (cause) {
+      err = cause
+      await Bun.sleep(10)
+    }
+  }
+  throw err
+}
+
 const runtime = ManagedRuntime.make(
   Layer.mergeAll(LSP.defaultLayer, FileTime.defaultLayer, AppFileSystem.defaultLayer, Format.defaultLayer, Bus.layer),
 )
@@ -133,7 +148,7 @@ describe("tool.edit", () => {
             ),
           )
 
-          expect(events).toContain("updated")
+          await wait(() => expect(events).toContain("updated"))
           unsubUpdated()
         },
       })
@@ -364,7 +379,7 @@ describe("tool.edit", () => {
             ),
           )
 
-          expect(events).toContain("updated")
+          await wait(() => expect(events).toContain("updated"))
           unsubUpdated()
         },
       })
