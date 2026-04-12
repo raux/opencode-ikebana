@@ -32,6 +32,11 @@ const emptyAuth = Layer.mock(Auth.Service)({
   all: () => Effect.succeed({}),
 })
 
+const installDeps = (dir: string, input?: Config.InstallInput) =>
+  Effect.runPromise(
+    Config.Service.use((svc) => svc.installDependencies(dir, input)).pipe(Effect.provide(Config.defaultLayer)),
+  )
+
 // Get managed config directory from environment (set in preload.ts)
 const managedConfigDir = process.env.OPENCODE_TEST_MANAGED_CONFIG_DIR!
 
@@ -858,9 +863,9 @@ test("dedupes concurrent config dependency installs for the same dir", async () 
   })
 
   try {
-    const first = Config.installDependencies(dir)
+    const first = installDeps(dir)
     await ready
-    const second = Config.installDependencies(dir, {
+    const second = installDeps(dir, {
       waitTick: (tick) => {
         ticks.push(tick.attempt)
         blocked()
@@ -926,9 +931,9 @@ test("serializes config dependency installs across dirs", async () => {
   })
 
   try {
-    const first = Config.installDependencies(a)
+    const first = installDeps(a)
     await ready
-    const second = Config.installDependencies(b)
+    const second = installDeps(b)
     done()
     await Promise.all([first, second])
   } finally {

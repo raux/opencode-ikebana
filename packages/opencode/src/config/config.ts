@@ -1664,10 +1664,6 @@ export namespace Config {
     return runPromise((svc) => svc.getConsoleState())
   }
 
-  export async function installDependencies(dir: string, input?: InstallInput) {
-    return runPromise((svc) => svc.installDependencies(dir, input))
-  }
-
   export async function update(config: Info) {
     return runPromise((svc) => svc.update(config))
   }
