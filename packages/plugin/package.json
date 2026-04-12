@@ -22,8 +22,8 @@
     "zod": "catalog:"
   },
   "peerDependencies": {
-    "@opentui/core": ">=0.0.0-20260412-25ac7c5b",
-    "@opentui/solid": ">=0.0.0-20260412-25ac7c5b"
+    "@opentui/core": ">=0.0.0-20260412-f6341bab",
+    "@opentui/solid": ">=0.0.0-20260412-f6341bab"
   },
   "peerDependenciesMeta": {
     "@opentui/core": {
@@ -34,8 +34,8 @@
     }
   },
   "devDependencies": {
-    "@opentui/core": "0.0.0-20260412-25ac7c5b",
-    "@opentui/solid": "0.0.0-20260412-25ac7c5b",
+    "@opentui/core": "0.0.0-20260412-f6341bab",
+    "@opentui/solid": "0.0.0-20260412-f6341bab",
     "@tsconfig/node22": "catalog:",
     "@types/node": "catalog:",
     "typescript": "catalog:",
