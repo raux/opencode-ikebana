@@ -827,8 +827,8 @@ test("dedupes concurrent config dependency installs for the same dir", async () 
 
   let calls = 0
   const online = spyOn(Network, "online").mockReturnValue(false)
-  const ready = await Effect.runPromise(Deferred.make<void>())
-  const hold = await Effect.runPromise(Deferred.make<void>())
+  const ready = Deferred.makeUnsafe<void>()
+  const hold = Deferred.makeUnsafe<void>()
   const targetDir = path.normalize(dir)
   const run = spyOn(Npm, "install").mockImplementation(async (d: string) => {
     if (path.normalize(d) !== targetDir) return
@@ -846,7 +846,7 @@ test("dedupes concurrent config dependency installs for the same dir", async () 
   try {
     await Effect.runPromise(
       Effect.gen(function* () {
-        const first = yield* Effect.promise(() => installDeps(dir)).pipe(Effect.fork)
+        const first = yield* Effect.promise(() => installDeps(dir)).pipe(Effect.forkScoped)
         yield* Deferred.await(ready)
 
         let done = false
@@ -856,7 +856,7 @@ test("dedupes concurrent config dependency installs for the same dir", async () 
               done = true
             }),
           ),
-          Effect.fork,
+          Effect.forkScoped,
         )
 
         yield* Effect.sleep("50 millis")
@@ -865,7 +865,7 @@ test("dedupes concurrent config dependency installs for the same dir", async () 
         yield* Deferred.succeed(hold, void 0)
         yield* Fiber.join(first)
         yield* Fiber.join(second)
-      }),
+      }).pipe(Effect.scoped),
     )
   } finally {
     online.mockRestore()
@@ -888,8 +888,8 @@ test("serializes config dependency installs across dirs", async () => {
   let calls = 0
   let open = 0
   let peak = 0
-  const ready = await Effect.runPromise(Deferred.make<void>())
-  const hold = await Effect.runPromise(Deferred.make<void>())
+  const ready = Deferred.makeUnsafe<void>()
+  const hold = Deferred.makeUnsafe<void>()
 
   const online = spyOn(Network, "online").mockReturnValue(false)
   const run = spyOn(Npm, "install").mockImplementation(async (dir: string) => {
@@ -918,17 +918,17 @@ test("serializes config dependency installs across dirs", async () => {
   try {
     await Effect.runPromise(
       Effect.gen(function* () {
-        const first = yield* Effect.promise(() => installDeps(a)).pipe(Effect.fork)
+        const first = yield* Effect.promise(() => installDeps(a)).pipe(Effect.forkScoped)
         yield* Deferred.await(ready)
 
-        const second = yield* Effect.promise(() => installDeps(b)).pipe(Effect.fork)
+        const second = yield* Effect.promise(() => installDeps(b)).pipe(Effect.forkScoped)
         yield* Effect.sleep("50 millis")
         expect(peak).toBe(1)
 
         yield* Deferred.succeed(hold, void 0)
         yield* Fiber.join(first)
         yield* Fiber.join(second)
-      }),
+      }).pipe(Effect.scoped),
     )
   } finally {
     online.mockRestore()

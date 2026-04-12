@@ -1322,7 +1322,7 @@ export namespace Config {
                 signal,
               }),
             ),
-            () => install(dir),
+            () => install(dir).pipe(Effect.orDie),
             (lease) => Effect.promise(() => lease.release()),
           )
         })
