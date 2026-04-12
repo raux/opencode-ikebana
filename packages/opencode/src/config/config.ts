@@ -1294,9 +1294,9 @@ export namespace Config {
         ) {
           if (!(yield* Effect.promise(() => isWritable(dir)))) return
 
-          const lease = yield* Effect.promise(() =>
+          const lease = yield* Effect.promise((signal) =>
             Flock.acquire(`config-install:${AppFileSystem.resolve(dir)}`, {
-              signal: input?.signal,
+              signal: input?.signal ? AbortSignal.any([input.signal, signal]) : signal,
               onWait: (tick) =>
                 input?.waitTick?.({
                   dir,
@@ -1314,27 +1314,30 @@ export namespace Config {
             const gitignore = path.join(dir, ".gitignore")
             const target = Installation.isLocal() ? "*" : Installation.VERSION
             const json = yield* fs.readJson(pkg).pipe(
-              Effect.catch(() => Effect.succeed({ dependencies: {} } satisfies Package)),
-              Effect.map(
-                (x): Package =>
-                  x && typeof x === "object" && !Array.isArray(x) ? (x as Package) : { dependencies: {} },
-              ),
+              Effect.catch(() => Effect.succeed({} satisfies Package)),
+              Effect.map((x): Package => (isRecord(x) ? (x as Package) : {})),
             )
+            const hasDep = json.dependencies?.["@opencode-ai/plugin"] === target
+            const hasIgnore = yield* fs.existsSafe(gitignore)
 
-            yield* fs.writeJson(pkg, {
-              ...json,
-              dependencies: {
-                ...json.dependencies,
-                "@opencode-ai/plugin": target,
-              },
-            })
+            if (!hasDep) {
+              yield* fs.writeJson(pkg, {
+                ...json,
+                dependencies: {
+                  ...json.dependencies,
+                  "@opencode-ai/plugin": target,
+                },
+              })
+            }
 
-            if (!(yield* fs.existsSafe(gitignore))) {
+            if (!hasIgnore) {
               yield* fs.writeFileString(
                 gitignore,
                 ["node_modules", "package.json", "package-lock.json", "bun.lock", ".gitignore"].join("\n"),
               )
             }
+
+            if (hasDep && hasIgnore) return
 
             yield* Effect.promise(() => Npm.install(dir))
           }).pipe(Effect.ensuring(Effect.promise(() => lease.release())))

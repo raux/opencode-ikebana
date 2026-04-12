@@ -24,6 +24,7 @@ import { EffectLogger } from "@/effect/logger"
 import { InstanceState } from "@/effect/instance-state"
 import { makeRuntime } from "@/effect/run-service"
 import { AppFileSystem } from "@/filesystem"
+import { isRecord } from "@/util/record"
 
 // Direct imports for bundled providers
 import { createAmazonBedrock, type AmazonBedrockProviderSettings } from "@ai-sdk/amazon-bedrock"
@@ -1649,8 +1650,13 @@ export namespace Provider {
           const s = yield* InstanceState.get(state)
           const recent = yield* fs.readJson(path.join(Global.Path.state, "model.json")).pipe(
             Effect.map((x): { providerID: ProviderID; modelID: ModelID }[] => {
-              if (!x || typeof x !== "object" || !("recent" in x) || !Array.isArray(x.recent)) return []
-              return x.recent as { providerID: ProviderID; modelID: ModelID }[]
+              if (!isRecord(x) || !Array.isArray(x.recent)) return []
+              return x.recent.flatMap((item) => {
+                if (!isRecord(item)) return []
+                if (typeof item.providerID !== "string") return []
+                if (typeof item.modelID !== "string") return []
+                return [{ providerID: ProviderID.make(item.providerID), modelID: ModelID.make(item.modelID) }]
+              })
             }),
             Effect.catch(() => Effect.succeed([] as { providerID: ProviderID; modelID: ModelID }[])),
           )

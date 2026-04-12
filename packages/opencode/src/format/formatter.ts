@@ -216,16 +216,16 @@ export const rlang: Info = {
   name: "air",
   extensions: [".R"],
   async enabled() {
-    const airPath = which("air")
-    if (airPath == null) return false
+    const air = which("air")
+    if (air == null) return false
 
-    const output = await Process.text(["air", "--help"], { nothrow: true })
+    const output = await Process.text([air, "--help"], { nothrow: true })
 
     // Check for "Air: An R language server and formatter"
     const firstLine = output.text.split("\n")[0]
     const hasR = firstLine.includes("R language")
     const hasFormatter = firstLine.includes("formatter")
-    if (output.code === 0 && hasR && hasFormatter) return ["air", "format", "$FILE"]
+    if (output.code === 0 && hasR && hasFormatter) return [air, "format", "$FILE"]
     return false
   },
 }
@@ -235,10 +235,10 @@ export const uvformat: Info = {
   extensions: [".py", ".pyi"],
   async enabled() {
     if (await ruff.enabled()) return false
-    if (which("uv") !== null) {
-      const output = await Process.run(["uv", "format", "--help"], { nothrow: true })
-      if (output.code === 0) return ["uv", "format", "--", "$FILE"]
-    }
+    const uv = which("uv")
+    if (uv == null) return false
+    const output = await Process.run([uv, "format", "--help"], { nothrow: true })
+    if (output.code === 0) return [uv, "format", "--", "$FILE"]
     return false
   },
 }
