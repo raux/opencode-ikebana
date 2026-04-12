@@ -1072,7 +1072,7 @@ export namespace Config {
     readonly get: () => Effect.Effect<Info>
     readonly getGlobal: () => Effect.Effect<Info>
     readonly getConsoleState: () => Effect.Effect<ConsoleState>
-    readonly installDependencies: (dir: string) => Effect.Effect<void>
+    readonly installDependencies: (dir: string) => Effect.Effect<void, AppFileSystem.Error>
     readonly update: (config: Info) => Effect.Effect<void>
     readonly updateGlobal: (config: Info) => Effect.Effect<Info>
     readonly invalidate: (wait?: boolean) => Effect.Effect<void>
@@ -1277,6 +1277,7 @@ export namespace Config {
         const install = Effect.fnUntraced(function* (dir: string) {
           const pkg = path.join(dir, "package.json")
           const gitignore = path.join(dir, ".gitignore")
+          const plugin = path.join(dir, "node_modules", "@opencode-ai", "plugin", "package.json")
           const target = Installation.isLocal() ? "*" : Installation.VERSION
           const json = yield* fs.readJson(pkg).pipe(
             Effect.catch(() => Effect.succeed({} satisfies Package)),
@@ -1284,6 +1285,7 @@ export namespace Config {
           )
           const hasDep = json.dependencies?.["@opencode-ai/plugin"] === target
           const hasIgnore = yield* fs.existsSafe(gitignore)
+          const hasPkg = yield* fs.existsSafe(plugin)
 
           if (!hasDep) {
             yield* fs.writeJson(pkg, {
@@ -1302,7 +1304,7 @@ export namespace Config {
             )
           }
 
-          if (hasDep && hasIgnore) return
+          if (hasDep && hasIgnore && hasPkg) return
 
           yield* Effect.promise(() => Npm.install(dir))
         })
@@ -1322,7 +1324,7 @@ export namespace Config {
                 signal,
               }),
             ),
-            () => install(dir).pipe(Effect.orDie),
+            () => install(dir),
             (lease) => Effect.promise(() => lease.release()),
           )
         })
@@ -1424,8 +1426,8 @@ export namespace Config {
             }
 
             const dep = yield* installDependencies(dir).pipe(
-              Effect.catch((err) => {
-                log.warn("background dependency install failed", { dir, error: err })
+              Effect.catchAllCause((cause) => {
+                log.warn("background dependency install failed", { dir, error: String(cause) })
                 return Effect.void
               }),
               Effect.forkScoped,
