@@ -21,7 +21,9 @@ import { Plugin } from "@/plugin"
 import { Skill } from "../skill"
 import { Effect, Context, Layer } from "effect"
 import { InstanceState } from "@/effect/instance-state"
+import { Observability } from "@/effect/oltp"
 import { makeRuntime } from "@/effect/run-service"
+import type { Tracer } from "@opentelemetry/api"
 
 export namespace Agent {
   export const Info = z
@@ -345,38 +347,42 @@ export namespace Agent {
           const authInfo = yield* auth.get(model.providerID).pipe(Effect.orDie)
           const isOpenaiOauth = model.providerID === "openai" && authInfo?.type === "oauth"
 
-          const params = {
-            experimental_telemetry: {
-              isEnabled: cfg.experimental?.openTelemetry,
-              metadata: {
-                userId: cfg.username ?? "unknown",
-              },
-            },
-            temperature: 0.3,
-            messages: [
-              ...(isOpenaiOauth
-                ? []
-                : system.map(
-                    (item): ModelMessage => ({
-                      role: "system",
-                      content: item,
-                    }),
-                  )),
-              {
-                role: "user",
-                content: `Create an agent configuration based on this request: \"${input.description}\".\n\nIMPORTANT: The following identifiers already exist and must NOT be used: ${existing.map((i) => i.name).join(", ")}\n  Return ONLY the JSON object, no other text, do not wrap in backticks`,
-              },
-            ],
-            model: language,
-            schema: z.object({
-              identifier: z.string(),
-              whenToUse: z.string(),
-              systemPrompt: z.string(),
-            }),
-          } satisfies Parameters<typeof generateObject>[0]
+          const run = async (tracer: Tracer) => {
+            const params = {
+              experimental_telemetry: Observability.aiTelemetry({
+                enabled: cfg.experimental?.openTelemetry,
+                tracer,
+                functionId: "Agent.generate",
+                metadata: {
+                  userID: cfg.username ?? "unknown",
+                  providerID: resolved.providerID,
+                  modelID: resolved.id,
+                },
+              }),
+              temperature: 0.3,
+              messages: [
+                ...(isOpenaiOauth
+                  ? []
+                  : system.map(
+                      (item): ModelMessage => ({
+                        role: "system",
+                        content: item,
+                      }),
+                    )),
+                {
+                  role: "user",
+                  content: `Create an agent configuration based on this request: \"${input.description}\".\n\nIMPORTANT: The following identifiers already exist and must NOT be used: ${existing.map((i) => i.name).join(", ")}\n  Return ONLY the JSON object, no other text, do not wrap in backticks`,
+                },
+              ],
+              model: language,
+              schema: z.object({
+                identifier: z.string(),
+                whenToUse: z.string(),
+                systemPrompt: z.string(),
+              }),
+            } satisfies Parameters<typeof generateObject>[0]
 
-          if (isOpenaiOauth) {
-            return yield* Effect.promise(async () => {
+            if (isOpenaiOauth) {
               const result = streamObject({
                 ...params,
                 providerOptions: ProviderTransform.providerOptions(resolved, {
@@ -389,10 +395,12 @@ export namespace Agent {
                 if (part.type === "error") throw part.error
               }
               return result.object
-            })
+            }
+
+            return generateObject(params).then((r) => r.object)
           }
 
-          return yield* Effect.promise(() => generateObject(params).then((r) => r.object))
+          return yield* Observability.promise(run)
         }),
       })
     }),

@@ -45,6 +45,7 @@ import { decodeDataUrl } from "@/util/data-url"
 import { Process } from "@/util/process"
 import { Cause, Effect, Exit, Layer, Option, Scope, Context } from "effect"
 import { EffectLogger } from "@/effect/logger"
+import { Observability } from "@/effect/oltp"
 import { InstanceState } from "@/effect/instance-state"
 import { makeRuntime } from "@/effect/run-service"
 import { TaskTool, type TaskPromptOps } from "@/tool/task"
@@ -106,9 +107,8 @@ export namespace SessionPrompt {
       const llm = yield* LLM.Service
 
       const run = {
-        promise: <A, E>(effect: Effect.Effect<A, E>) =>
-          Effect.runPromise(effect.pipe(Effect.provide(EffectLogger.layer))),
-        fork: <A, E>(effect: Effect.Effect<A, E>) => Effect.runFork(effect.pipe(Effect.provide(EffectLogger.layer))),
+        promise: <A, E>(effect: Effect.Effect<A, E>) => Observability.runPromise(effect),
+        fork: <A, E>(effect: Effect.Effect<A, E>) => Observability.runFork(effect),
       }
 
       const cancel = Effect.fn("SessionPrompt.cancel")(function* (sessionID: SessionID) {

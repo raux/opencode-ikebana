@@ -75,8 +75,17 @@ export namespace Tool {
       Effect.gen(function* () {
         const toolInfo = init instanceof Function ? { ...(yield* init()) } : { ...init }
         const execute = toolInfo.execute
-        toolInfo.execute = (args, ctx) =>
-          Effect.gen(function* () {
+        toolInfo.execute = (args, ctx) => {
+          const ann = Object.fromEntries(
+            Object.entries({
+              tool: id,
+              agent: ctx.agent,
+              sessionID: ctx.sessionID,
+              messageID: ctx.messageID,
+              callID: ctx.callID,
+            }).filter((entry) => entry[1] !== undefined),
+          )
+          return Effect.gen(function* () {
             yield* Effect.try({
               try: () => toolInfo.parameters.parse(args),
               catch: (error) => {
@@ -104,7 +113,14 @@ export namespace Tool {
                 ...(truncated.truncated && { outputPath: truncated.outputPath }),
               },
             }
-          }).pipe(Effect.orDie)
+          }).pipe(
+            Effect.annotateLogs(ann),
+            Effect.annotateSpans(ann),
+            Effect.withLogSpan(`Tool.${id}`),
+            Effect.withSpan(`Tool.${id}`),
+            Effect.orDie,
+          )
+        }
         return toolInfo
       })
   }

@@ -21,67 +21,14 @@ import { Wildcard } from "@/util/wildcard"
 import { SessionID } from "@/session/schema"
 import { Auth } from "@/auth"
 import { Installation } from "@/installation"
+import { Observability } from "@/effect/oltp"
+import type { Tracer } from "@opentelemetry/api"
 
 export namespace LLM {
   const log = Log.create({ service: "llm" })
   export const OUTPUT_TOKEN_MAX = ProviderTransform.OUTPUT_TOKEN_MAX
 
-  export type StreamInput = {
-    user: MessageV2.User
-    sessionID: string
-    parentSessionID?: string
-    model: Provider.Model
-    agent: Agent.Info
-    permission?: Permission.Ruleset
-    system: string[]
-    messages: ModelMessage[]
-    small?: boolean
-    tools: Record<string, Tool>
-    retries?: number
-    toolChoice?: "auto" | "required" | "none"
-  }
-
-  export type StreamRequest = StreamInput & {
-    abort: AbortSignal
-  }
-
-  export type Event = Awaited<ReturnType<typeof stream>>["fullStream"] extends AsyncIterable<infer T> ? T : never
-
-  export interface Interface {
-    readonly stream: (input: StreamInput) => Stream.Stream<Event, unknown>
-  }
-
-  export class Service extends Context.Service<Service, Interface>()("@opencode/LLM") {}
-
-  export const layer = Layer.effect(
-    Service,
-    Effect.gen(function* () {
-      return Service.of({
-        stream(input) {
-          return Stream.scoped(
-            Stream.unwrap(
-              Effect.gen(function* () {
-                const ctrl = yield* Effect.acquireRelease(
-                  Effect.sync(() => new AbortController()),
-                  (ctrl) => Effect.sync(() => ctrl.abort()),
-                )
-
-                const result = yield* Effect.promise(() => LLM.stream({ ...input, abort: ctrl.signal }))
-
-                return Stream.fromAsyncIterable(result.fullStream, (e) =>
-                  e instanceof Error ? e : new Error(String(e)),
-                )
-              }),
-            ),
-          )
-        },
-      })
-    }),
-  )
-
-  export const defaultLayer = layer
-
-  export async function stream(input: StreamRequest) {
+  const request = async (input: StreamRequest, tracer: Tracer) => {
     const l = log
       .clone()
       .tag("providerID", input.model.providerID)
@@ -384,14 +331,80 @@ export namespace LLM {
           },
         ],
       }),
-      experimental_telemetry: {
-        isEnabled: cfg.experimental?.openTelemetry,
+      experimental_telemetry: Observability.aiTelemetry({
+        enabled: cfg.experimental?.openTelemetry,
+        tracer,
+        functionId: "LLM.stream",
         metadata: {
-          userId: cfg.username ?? "unknown",
-          sessionId: input.sessionID,
+          userID: cfg.username ?? "unknown",
+          sessionID: input.sessionID,
+          providerID: input.model.providerID,
+          modelID: input.model.id,
+          agent: input.agent.name,
         },
-      },
+      }),
     })
+  }
+
+  export type StreamInput = {
+    user: MessageV2.User
+    sessionID: string
+    parentSessionID?: string
+    model: Provider.Model
+    agent: Agent.Info
+    permission?: Permission.Ruleset
+    system: string[]
+    messages: ModelMessage[]
+    small?: boolean
+    tools: Record<string, Tool>
+    retries?: number
+    toolChoice?: "auto" | "required" | "none"
+  }
+
+  export type StreamRequest = StreamInput & {
+    abort: AbortSignal
+  }
+
+  export type Event = Awaited<ReturnType<typeof stream>>["fullStream"] extends AsyncIterable<infer T> ? T : never
+
+  export interface Interface {
+    readonly stream: (input: StreamInput) => Stream.Stream<Event, unknown>
+  }
+
+  export class Service extends Context.Service<Service, Interface>()("@opencode/LLM") {}
+
+  export const layer = Layer.effect(
+    Service,
+    Effect.gen(function* () {
+      return Service.of({
+        stream(input) {
+          return Stream.scoped(
+            Stream.unwrap(
+              Effect.gen(function* () {
+                const ctrl = yield* Effect.acquireRelease(
+                  Effect.sync(() => new AbortController()),
+                  (ctrl) => Effect.sync(() => ctrl.abort()),
+                )
+
+                const result = yield* Observability.promise((tracer) =>
+                  request({ ...input, abort: ctrl.signal }, tracer),
+                )
+
+                return Stream.fromAsyncIterable(result.fullStream, (e) =>
+                  e instanceof Error ? e : new Error(String(e)),
+                )
+              }),
+            ),
+          )
+        },
+      })
+    }),
+  )
+
+  export const defaultLayer = layer
+
+  export async function stream(input: StreamRequest) {
+    return Observability.runPromise(Observability.promise((tracer) => request(input, tracer)))
   }
 
   function resolveTools(input: Pick<StreamInput, "tools" | "agent" | "permission" | "user">) {
