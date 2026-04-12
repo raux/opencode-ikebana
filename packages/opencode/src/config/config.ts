@@ -147,52 +147,6 @@ export namespace Config {
     dependencies?: Record<string, string>
   }
 
-  const { runPromise: runFs } = makeRuntime(AppFileSystem.Service, AppFileSystem.defaultLayer)
-
-  const install = Effect.fnUntraced(function* (fs: AppFileSystem.Interface, dir: string, target: string) {
-    const pkg = path.join(dir, "package.json")
-    const gitignore = path.join(dir, ".gitignore")
-    const json = yield* fs.readJson(pkg).pipe(
-      Effect.catch(() => Effect.succeed({ dependencies: {} } satisfies Package)),
-      Effect.map(
-        (x): Package => (x && typeof x === "object" && !Array.isArray(x) ? (x as Package) : { dependencies: {} }),
-      ),
-    )
-
-    yield* fs.writeJson(pkg, {
-      ...json,
-      dependencies: {
-        ...json.dependencies,
-        "@opencode-ai/plugin": target,
-      },
-    })
-
-    if (yield* fs.existsSafe(gitignore)) return
-    yield* fs.writeFileString(
-      gitignore,
-      ["node_modules", "package.json", "package-lock.json", "bun.lock", ".gitignore"].join("\n"),
-    )
-  })
-
-  export async function installDependencies(dir: string, input?: InstallInput) {
-    if (!(await isWritable(dir))) return
-    await using _ = await Flock.acquire(`config-install:${AppFileSystem.resolve(dir)}`, {
-      signal: input?.signal,
-      onWait: (tick) =>
-        input?.waitTick?.({
-          dir,
-          attempt: tick.attempt,
-          delay: tick.delay,
-          waited: tick.waited,
-        }),
-    })
-    input?.signal?.throwIfAborted()
-
-    const target = Installation.isLocal() ? "*" : Installation.VERSION
-    await runFs((fs) => install(fs, dir, target))
-    await Npm.install(dir)
-  }
-
   async function isWritable(dir: string) {
     try {
       await fsNode.access(dir, constants.W_OK)
@@ -1132,6 +1086,7 @@ export namespace Config {
     readonly get: () => Effect.Effect<Info>
     readonly getGlobal: () => Effect.Effect<Info>
     readonly getConsoleState: () => Effect.Effect<ConsoleState>
+    readonly installDependencies: (dir: string, input?: InstallInput) => Effect.Effect<void>
     readonly update: (config: Info) => Effect.Effect<void>
     readonly updateGlobal: (config: Info) => Effect.Effect<Info>
     readonly invalidate: (wait?: boolean) => Effect.Effect<void>
@@ -1333,6 +1288,58 @@ export namespace Config {
           return yield* cachedGlobal
         })
 
+        const installDependencies = Effect.fn("Config.installDependencies")(function* (
+          dir: string,
+          input?: InstallInput,
+        ) {
+          if (!(yield* Effect.promise(() => isWritable(dir)))) return
+
+          const lease = yield* Effect.promise(() =>
+            Flock.acquire(`config-install:${AppFileSystem.resolve(dir)}`, {
+              signal: input?.signal,
+              onWait: (tick) =>
+                input?.waitTick?.({
+                  dir,
+                  attempt: tick.attempt,
+                  delay: tick.delay,
+                  waited: tick.waited,
+                }),
+            }),
+          )
+
+          yield* Effect.gen(function* () {
+            input?.signal?.throwIfAborted()
+
+            const pkg = path.join(dir, "package.json")
+            const gitignore = path.join(dir, ".gitignore")
+            const target = Installation.isLocal() ? "*" : Installation.VERSION
+            const json = yield* fs.readJson(pkg).pipe(
+              Effect.catch(() => Effect.succeed({ dependencies: {} } satisfies Package)),
+              Effect.map(
+                (x): Package =>
+                  x && typeof x === "object" && !Array.isArray(x) ? (x as Package) : { dependencies: {} },
+              ),
+            )
+
+            yield* fs.writeJson(pkg, {
+              ...json,
+              dependencies: {
+                ...json.dependencies,
+                "@opencode-ai/plugin": target,
+              },
+            })
+
+            if (!(yield* fs.existsSafe(gitignore))) {
+              yield* fs.writeFileString(
+                gitignore,
+                ["node_modules", "package.json", "package-lock.json", "bun.lock", ".gitignore"].join("\n"),
+              )
+            }
+
+            yield* Effect.promise(() => Npm.install(dir))
+          }).pipe(Effect.ensuring(Effect.promise(() => lease.release())))
+        })
+
         const loadInstanceState = Effect.fnUntraced(function* (ctx: InstanceContext) {
           const auth = yield* authSvc.all().pipe(Effect.orDie)
 
@@ -1429,9 +1436,7 @@ export namespace Config {
               }
             }
 
-            const dep = iife(async () => {
-              await installDependencies(dir)
-            })
+            const dep = Effect.runPromise(installDependencies(dir))
             void dep.catch((err) => {
               log.warn("background dependency install failed", { dir, error: err })
             })
@@ -1626,6 +1631,7 @@ export namespace Config {
           get,
           getGlobal,
           getConsoleState,
+          installDependencies,
           update,
           updateGlobal,
           invalidate,
@@ -1653,6 +1659,10 @@ export namespace Config {
 
   export async function getConsoleState() {
     return runPromise((svc) => svc.getConsoleState())
+  }
+
+  export async function installDependencies(dir: string, input?: InstallInput) {
+    return runPromise((svc) => svc.installDependencies(dir, input))
   }
 
   export async function update(config: Info) {
