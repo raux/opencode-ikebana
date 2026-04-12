@@ -143,6 +143,37 @@ export namespace Config {
     waitTick?: (input: { dir: string; attempt: number; delay: number; waited: number }) => void | Promise<void>
   }
 
+  type Package = {
+    dependencies?: Record<string, string>
+  }
+
+  const { runPromise: runFs } = makeRuntime(AppFileSystem.Service, AppFileSystem.defaultLayer)
+
+  const install = Effect.fnUntraced(function* (fs: AppFileSystem.Interface, dir: string, target: string) {
+    const pkg = path.join(dir, "package.json")
+    const gitignore = path.join(dir, ".gitignore")
+    const json = yield* fs.readJson(pkg).pipe(
+      Effect.catch(() => Effect.succeed({ dependencies: {} } satisfies Package)),
+      Effect.map(
+        (x): Package => (x && typeof x === "object" && !Array.isArray(x) ? (x as Package) : { dependencies: {} }),
+      ),
+    )
+
+    yield* fs.writeJson(pkg, {
+      ...json,
+      dependencies: {
+        ...json.dependencies,
+        "@opencode-ai/plugin": target,
+      },
+    })
+
+    if (yield* fs.existsSafe(gitignore)) return
+    yield* fs.writeFileString(
+      gitignore,
+      ["node_modules", "package.json", "package-lock.json", "bun.lock", ".gitignore"].join("\n"),
+    )
+  })
+
   export async function installDependencies(dir: string, input?: InstallInput) {
     if (!(await isWritable(dir))) return
     await using _ = await Flock.acquire(`config-install:${AppFileSystem.resolve(dir)}`, {
@@ -157,34 +188,8 @@ export namespace Config {
     })
     input?.signal?.throwIfAborted()
 
-    const pkg = path.join(dir, "package.json")
     const target = Installation.isLocal() ? "*" : Installation.VERSION
-    const gitignore = path.join(dir, ".gitignore")
-    await Effect.runPromise(
-      Effect.gen(function* () {
-        const fs = yield* AppFileSystem.Service
-        const json = yield* fs.readJson(pkg).pipe(
-          Effect.map((x) =>
-            x && typeof x === "object" && !Array.isArray(x)
-              ? (x as { dependencies?: Record<string, string> })
-              : ({ dependencies: {} } as { dependencies?: Record<string, string> }),
-          ),
-          Effect.catch(() => Effect.succeed({ dependencies: {} } as { dependencies?: Record<string, string> })),
-        )
-        yield* fs.writeJson(pkg, {
-          ...json,
-          dependencies: {
-            ...json.dependencies,
-            "@opencode-ai/plugin": target,
-          },
-        })
-        if (yield* fs.existsSafe(gitignore)) return
-        yield* fs.writeFileString(
-          gitignore,
-          ["node_modules", "package.json", "package-lock.json", "bun.lock", ".gitignore"].join("\n"),
-        )
-      }).pipe(Effect.provide(AppFileSystem.defaultLayer)),
-    )
+    await runFs((fs) => install(fs, dir, target))
     await Npm.install(dir)
   }
 
