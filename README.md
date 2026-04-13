@@ -26,6 +26,42 @@ OPENCODE_INSTALL_DIR=/usr/local/bin curl -fsSL https://opencode.ai/install | bas
 XDG_BIN_DIR=$HOME/.local/bin curl -fsSL https://opencode.ai/install | bash
 ```
 
+### Install from a Local Git Clone
+
+#### Prerequisites
+
+- [Bun](https://bun.sh/) 1.3+
+
+#### Clone, Install, and Run
+
+```bash
+git clone https://github.com/raux/opencode-ikebana.git
+cd opencode-ikebana
+bun install
+bun dev
+```
+
+`bun dev` starts the TUI in the `packages/opencode` directory. To run against a different directory:
+
+```bash
+bun dev <directory>
+```
+
+#### Compile a Standalone Executable
+
+```bash
+./packages/opencode/script/build.ts --single
+```
+
+The binary is output to `./packages/opencode/dist/opencode-<platform>/bin/opencode`.
+Replace `<platform>` with your platform (e.g. `darwin-arm64`, `linux-x64`).
+
+Run the compiled binary directly:
+
+```bash
+./packages/opencode/dist/opencode-<platform>/bin/opencode
+```
+
 ### Agents
 
 OpenCode includes two built-in agents you can switch between with the `Tab` key.
