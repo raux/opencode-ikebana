@@ -1,6 +1,6 @@
 <p align="center">The open source AI IDE - opensource-ikebana.</p>
 
-This is not OpenCode. 
+This is a independent fork of OpenCode. 
 
 This is NOT built by the OpenCode team and is not affiliated with us in any way.
 
