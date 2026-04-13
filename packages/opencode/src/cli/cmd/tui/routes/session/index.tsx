@@ -252,10 +252,10 @@ export function Session() {
   const exit = useExit()
 
   createEffect(() => {
-    const title = Locale.truncate(session()?.title ?? "", 50)
-    const pad = (text: string) => text.padEnd(10, " ")
-    const weak = (text: string) => UI.Style.TEXT_DIM + pad(text) + UI.Style.TEXT_NORMAL
-    const logo = UI.logo("  ").split(/\r?\n/)
+    const dim = UI.Style.TEXT_DIM
+    const reset = UI.Style.TEXT_NORMAL
+    const dir = project.instance.path().directory || process.cwd()
+    const logo = UI.logo("").split(/\r?\n/)
     return exit.message.set(
       [
         `${logo[0] ?? ""}`,
@@ -263,8 +263,13 @@ export function Session() {
         `${logo[2] ?? ""}`,
         `${logo[3] ?? ""}`,
         ``,
-        `  ${weak("Session")}${UI.Style.TEXT_NORMAL_BOLD}${title}${UI.Style.TEXT_NORMAL}`,
-        `  ${weak("Continue")}${UI.Style.TEXT_NORMAL_BOLD}opencode -s ${session()?.id}${UI.Style.TEXT_NORMAL}`,
+        ``,
+        `${dim}OpenCode includes free models, to start:${reset}`,
+        ``,
+        `cd ${dir}  ${dim}# Open directory${reset}`,
+        `opencode      ${dim}# Run command${reset}`,
+        ``,
+        `${dim}For more information visit ${reset}https://opencode.ai/docs`,
         ``,
       ].join("\n"),
     )
