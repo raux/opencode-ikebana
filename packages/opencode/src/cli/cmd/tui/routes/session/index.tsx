@@ -252,8 +252,8 @@ export function Session() {
   const exit = useExit()
 
   createEffect(() => {
-    const dim = UI.Style.TEXT_DIM
-    const reset = UI.Style.TEXT_NORMAL
+    const weak = UI.Style.TEXT_DIM
+    const normal = UI.Style.TEXT_NORMAL
     const dir = project.instance.path().directory || process.cwd()
     const logo = UI.logo("").split(/\r?\n/)
     return exit.message.set(
@@ -264,12 +264,12 @@ export function Session() {
         `${logo[3] ?? ""}`,
         ``,
         ``,
-        `${dim}OpenCode includes free models, to start:${reset}`,
+        `${weak}OpenCode includes free models, to start:${normal}`,
         ``,
-        `cd ${dir}  ${dim}# Open directory${reset}`,
-        `opencode      ${dim}# Run command${reset}`,
+        `cd ${dir}  ${weak}# Open directory${normal}`,
+        `opencode      ${weak}# Run command${normal}`,
         ``,
-        `${dim}For more information visit ${reset}https://opencode.ai/docs`,
+        `${weak}For more information visit ${normal}https://opencode.ai/docs`,
         ``,
       ].join("\n"),
     )
