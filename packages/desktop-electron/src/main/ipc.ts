@@ -4,7 +4,7 @@ import type { IpcMainEvent, IpcMainInvokeEvent } from "electron"
 
 import type { InitStep, ServerReadyData, SqliteMigrationProgress, TitlebarTheme, WslConfig } from "../preload/types"
 import { getStore } from "./store"
-import { setTitlebar } from "./windows"
+import { getWindowId, setTitlebar } from "./windows"
 
 const pickerFilters = (ext?: string[]) => {
   if (!ext || ext.length === 0) return undefined
@@ -150,6 +150,12 @@ export function registerIpcHandlers(deps: Deps) {
   })
 
   ipcMain.handle("get-window-count", () => BrowserWindow.getAllWindows().length)
+
+  ipcMain.handle("get-window-id", (event: IpcMainInvokeEvent) => {
+    const win = BrowserWindow.fromWebContents(event.sender)
+    if (!win) return null
+    return getWindowId(win) ?? null
+  })
 
   ipcMain.handle("get-window-focused", (event: IpcMainInvokeEvent) => {
     const win = BrowserWindow.fromWebContents(event.sender)

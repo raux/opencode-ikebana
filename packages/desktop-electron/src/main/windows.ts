@@ -1,3 +1,4 @@
+import { randomInt } from "node:crypto"
 import windowState from "electron-window-state"
 import { app, BrowserWindow, nativeImage, nativeTheme } from "electron"
 import { dirname, join } from "node:path"
@@ -12,6 +13,9 @@ type Globals = {
 const root = dirname(fileURLToPath(import.meta.url))
 
 let backgroundColor: string | undefined
+const ids = new WeakMap<BrowserWindow, string>()
+const used = new Set<string>()
+let seen = false
 
 export function setBackgroundColor(color: string) {
   backgroundColor = color
@@ -19,6 +23,10 @@ export function setBackgroundColor(color: string) {
 
 export function getBackgroundColor(): string | undefined {
   return backgroundColor
+}
+
+export function getWindowId(win: BrowserWindow) {
+  return ids.get(win)
 }
 
 function iconsDir() {
@@ -88,6 +96,7 @@ export function createMainWindow(globals: Globals) {
       sandbox: false,
     },
   })
+  track(win)
 
   state.manage(win)
   loadWindow(win, "index.html")
@@ -160,4 +169,27 @@ function wireZoom(win: BrowserWindow) {
   win.webContents.on("zoom-changed", () => {
     win.webContents.setZoomFactor(1)
   })
+}
+
+function track(win: BrowserWindow) {
+  const id = nextId()
+  ids.set(win, id)
+  win.once("closed", () => {
+    used.delete(id)
+  })
+}
+
+function nextId() {
+  if (!seen) {
+    seen = true
+    used.add("main")
+    return "main"
+  }
+
+  while (true) {
+    const id = String(randomInt(100_000, 1_000_000))
+    if (used.has(id)) continue
+    used.add(id)
+    return id
+  }
 }
