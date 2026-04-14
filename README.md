@@ -94,3 +94,6 @@ It's very similar to Claude Code in terms of capability. Here are the key differ
 - A client/server architecture. This, for example, can allow OpenCode to run on your computer while you drive it remotely from a mobile app, meaning that the TUI frontend is just one of the possible clients.
 
 ---
+
+## Japanese translation
+[README.ja.md](README.ja.md)
