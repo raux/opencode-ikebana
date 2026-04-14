@@ -135,14 +135,23 @@ function format(entries: Entry[]) {
   return lines.join("\n")
 }
 
+// Bus event payload shape. The SDK Event type doesn't expose typed
+// properties per event, so we use a lightweight accessor.
+function props(event: Record<string, unknown>) {
+  return (event as { properties?: Record<string, unknown> }).properties
+}
+
 export async function TokenLogPlugin(_input: PluginInput): Promise<Hooks> {
   log.info("tokenlog plugin loaded")
 
   return {
     async event({ event }) {
+      const p = props(event as Record<string, unknown>)
+      if (!p) return
+
       // Track assistant messages for metadata correlation
       if (event.type === "message.updated") {
-        const info = (event as any).properties?.info
+        const info = p.info as Record<string, string> | undefined
         if (info?.role === "assistant") {
           messages.set(info.id, {
             sessionID: info.sessionID,
@@ -155,23 +164,23 @@ export async function TokenLogPlugin(_input: PluginInput): Promise<Hooks> {
 
       // Log token usage from step-finish parts
       if (event.type === "message.part.updated") {
-        const part = (event as any).properties?.part
+        const part = p.part as Record<string, unknown> | undefined
         if (part?.type !== "step-finish") return
-        const meta = messages.get(part.messageID)
+        const meta = messages.get(part.messageID as string)
         if (!meta) {
-          log.warn("step-finish without matching assistant message", { messageID: part.messageID })
+          log.warn("step-finish without matching assistant message", { messageID: part.messageID as string })
           return
         }
 
         const entry: Entry = {
           ts: new Date().toISOString(),
           sessionID: meta.sessionID,
-          messageID: part.messageID,
+          messageID: part.messageID as string,
           agent: meta.agent,
           providerID: meta.providerID,
           modelID: meta.modelID,
-          cost: part.cost,
-          tokens: part.tokens,
+          cost: part.cost as number,
+          tokens: part.tokens as Entry["tokens"],
         }
 
         log.info("token usage", {
