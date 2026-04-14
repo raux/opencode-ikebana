@@ -5,4 +5,4 @@ IMPORTANT:
 - Relative paths are resolved against the current working directory.
 - Once changed, all subsequent tool calls use the new directory as their base.
 - Access to files outside the new directory will require explicit external_directory permission.
-- To reset back to the original project directory, call with no arguments or use the original project path.
+- To reset back to the original project directory, pass the original project path.

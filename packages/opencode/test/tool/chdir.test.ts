@@ -109,22 +109,22 @@ describe("Instance.chdir", () => {
     })
     const sub = path.join(tmp.path, "sub")
 
+    // Set sandbox then dispose
     await Instance.provide({
       directory: tmp.path,
       fn: async () => {
         Instance.chdir(sub)
         expect(Instance.sandboxed).toBe(true)
-
         await Instance.dispose()
+      },
+    })
 
-        // After dispose, provide again - sandbox should be gone
-        await Instance.provide({
-          directory: tmp.path,
-          fn: async () => {
-            expect(Instance.sandboxed).toBe(false)
-            expect(Instance.directory).toBe(tmp.path)
-          },
-        })
+    // After dispose and re-provide, sandbox should be gone
+    await Instance.provide({
+      directory: tmp.path,
+      fn: async () => {
+        expect(Instance.sandboxed).toBe(false)
+        expect(Instance.directory).toBe(tmp.path)
       },
     })
   })
