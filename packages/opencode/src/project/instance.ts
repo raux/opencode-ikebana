@@ -16,6 +16,7 @@ export interface InstanceContext {
 
 const context = LocalContext.create<InstanceContext>("instance")
 const cache = new Map<string, Promise<InstanceContext>>()
+const sandboxes = new Map<string, { directory: string; worktree: string }>()
 
 const disposal = {
   all: undefined as Promise<void> | undefined,
@@ -76,13 +77,19 @@ export const Instance = {
     return context.use()
   },
   get directory() {
-    return context.use().directory
+    const ctx = context.use()
+    return sandboxes.get(ctx.directory)?.directory ?? ctx.directory
   },
   get worktree() {
-    return context.use().worktree
+    const ctx = context.use()
+    return sandboxes.get(ctx.directory)?.worktree ?? ctx.worktree
   },
   get project() {
     return context.use().project
+  },
+  get sandboxed() {
+    const ctx = context.use()
+    return sandboxes.has(ctx.directory)
   },
 
   /**
@@ -97,6 +104,23 @@ export const Instance = {
     // Skip worktree check in this case to preserve external_directory permissions.
     if (Instance.worktree === "/") return false
     return Filesystem.contains(instance.worktree, filepath)
+  },
+  /**
+   * Change the working directory for this instance.
+   * All tools will operate within this directory and cannot access outside it
+   * without explicit external_directory permission.
+   */
+  chdir(dir: string) {
+    const ctx = context.use()
+    const resolved = Filesystem.resolve(dir)
+    sandboxes.set(ctx.directory, { directory: resolved, worktree: resolved })
+  },
+  /**
+   * Reset the working directory back to the original project directory.
+   */
+  resetChdir() {
+    const ctx = context.use()
+    sandboxes.delete(ctx.directory)
   },
   /**
    * Captures the current instance ALS context and returns a wrapper that
@@ -116,7 +140,7 @@ export const Instance = {
     return context.provide(ctx, fn)
   },
   state<S>(init: () => S, dispose?: (state: Awaited<S>) => Promise<void>): () => S {
-    return State.create(() => Instance.directory, init, dispose)
+    return State.create(() => context.use().directory, init, dispose)
   },
   async reload(input: { directory: string; init?: () => Promise<any>; project?: Project.Info; worktree?: string }) {
     const directory = Filesystem.resolve(input.directory)
@@ -140,20 +164,21 @@ export const Instance = {
     return await next
   },
   async dispose() {
-    const directory = Instance.directory
+    const raw = context.use().directory
     const project = Instance.project
-    Log.Default.info("disposing instance", { directory })
-    await Promise.all([State.dispose(directory), disposeInstance(directory)])
-    cache.delete(directory)
+    Log.Default.info("disposing instance", { directory: raw })
+    sandboxes.delete(raw)
+    await Promise.all([State.dispose(raw), disposeInstance(raw)])
+    cache.delete(raw)
 
     GlobalBus.emit("event", {
-      directory,
+      directory: raw,
       project: project.id,
       workspace: WorkspaceContext.workspaceID,
       payload: {
         type: "server.instance.disposed",
         properties: {
-          directory,
+          directory: raw,
         },
       },
     })
