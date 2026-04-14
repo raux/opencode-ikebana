@@ -264,7 +264,7 @@ export function Session() {
         `${logo[3] ?? ""}`,
         ``,
         ``,
-        `${weak}Ikebana Code includes free models, to start:${normal}`,
+        `${weak}OpenCode includes free models, to start:${normal}`,
         ``,
         `cd ${dir}  ${weak}# Open directory${normal}`,
         `opencode      ${weak}# Run command${normal}`,
