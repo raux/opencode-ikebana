@@ -1,0 +1,8 @@
+Change the working directory for all agents. After calling this tool, all file operations (read, write, edit, bash, glob, grep) will be scoped to the specified directory. Agents will not be able to access files outside this directory without explicit permission.
+
+IMPORTANT:
+- The path must point to an existing directory.
+- Relative paths are resolved against the current working directory.
+- Once changed, all subsequent tool calls use the new directory as their base.
+- Access to files outside the new directory will require explicit external_directory permission.
+- To reset back to the original project directory, call with no arguments or use the original project path.

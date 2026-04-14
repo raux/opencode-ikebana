@@ -2,6 +2,7 @@ import { PlanExitTool } from "./plan"
 import { Session } from "../session"
 import { QuestionTool } from "./question"
 import { BashTool } from "./bash"
+import { ChdirTool } from "./chdir"
 import { EditTool } from "./edit"
 import { GlobTool } from "./glob"
 import { GrepTool } from "./grep"
@@ -36,6 +37,7 @@ import * as CrossSpawnSpawner from "@/effect/cross-spawn-spawner"
 import { Ripgrep } from "../file/ripgrep"
 import { Format } from "../format"
 import { InstanceState } from "@/effect/instance-state"
+import { Instance } from "@/project/instance"
 import { makeRuntime } from "@/effect/run-service"
 import { Env } from "../env"
 import { Question } from "../question"
@@ -115,6 +117,7 @@ export namespace ToolRegistry {
       const webfetch = yield* WebFetchTool
       const websearch = yield* WebSearchTool
       const bash = yield* BashTool
+      const chdir = yield* ChdirTool
       const codesearch = yield* CodeSearchTool
       const globtool = yield* GlobTool
       const writetool = yield* WriteTool
@@ -137,8 +140,8 @@ export namespace ToolRegistry {
                   const pluginCtx: PluginToolContext = {
                     ...toolCtx,
                     ask: (req) => toolCtx.ask(req),
-                    directory: ctx.directory,
-                    worktree: ctx.worktree,
+                    directory: Instance.directory,
+                    worktree: Instance.worktree,
                   }
                   const result = yield* Effect.promise(() => def.execute(args as any, pluginCtx))
                   const agent = yield* Effect.promise(() => Agent.get(toolCtx.agent))
@@ -184,6 +187,7 @@ export namespace ToolRegistry {
           const tool = yield* Effect.all({
             invalid: Tool.init(invalid),
             bash: Tool.init(bash),
+            chdir: Tool.init(chdir),
             read: Tool.init(read),
             glob: Tool.init(globtool),
             grep: Tool.init(greptool),
@@ -207,6 +211,7 @@ export namespace ToolRegistry {
               tool.invalid,
               ...(questionEnabled ? [tool.question] : []),
               tool.bash,
+              tool.chdir,
               tool.read,
               tool.glob,
               tool.grep,
