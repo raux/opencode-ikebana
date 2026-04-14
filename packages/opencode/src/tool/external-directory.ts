@@ -22,6 +22,7 @@ export const assertExternalDirectoryEffect = Effect.fn("Tool.assertExternalDirec
   if (options?.bypass) return
 
   const full = process.platform === "win32" ? AppFileSystem.normalizePath(target) : target
+  // If the path is within the current instance's directory or worktree, it's NOT an enough external directory.
   if (Instance.containsPath(full)) return
 
   const kind = options?.kind ?? "file"

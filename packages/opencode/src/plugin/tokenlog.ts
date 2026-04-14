@@ -42,6 +42,19 @@ function file() {
   return path.join(dir(), "tokens.jsonl")
 }
 
+async function clear(): Promise<void> {
+  const p = file()
+  try {
+    await fs.access(p)
+    await fs.unlink(p)
+    log.info("token logs cleared")
+  } catch (err) {
+    if (err instanceof Error && err.message !== "ENOENT") {
+      log.error("failed to clear token logs", { error: err })
+    }
+  }
+}
+
 async function append(entry: Entry) {
   await fs.mkdir(dir(), { recursive: true })
   await fs.appendFile(file(), JSON.stringify(entry) + "\n")
@@ -197,14 +210,19 @@ export async function TokenLogPlugin(_input: PluginInput): Promise<Hooks> {
 
     tool: {
       tokenlog: tool({
-        description: "View token usage log grouped by agent and model. Shows cumulative token counts and costs.",
-        args: {
-          session: tool.schema.string().optional().describe("Optional session ID to filter by"),
-        },
-        async execute(args) {
+        description: "Display token usage report.",
+        args: {},
+        async execute() {
           const entries = await read()
-          const filtered = args.session ? entries.filter((e) => e.sessionID === args.session) : entries
-          return format(filtered)
+          return format(entries)
+        },
+      }),
+      tokenlogclear: tool({
+        description: "Clear the token usage logs.",
+        args: {},
+        async execute() {
+          await clear()
+          return "Token usage logs cleared successfully."
         },
       }),
     },

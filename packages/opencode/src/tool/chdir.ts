@@ -22,17 +22,13 @@ export const ChdirTool = Tool.define(
       }),
       execute: (params: { path: string }, _ctx: Tool.Context) =>
         Effect.gen(function* () {
-          const resolved = path.isAbsolute(params.path)
-            ? params.path
-            : path.resolve(Instance.directory, params.path)
+          const resolved = path.isAbsolute(params.path) ? params.path : path.resolve(Instance.directory, params.path)
 
           const exists = yield* fs.existsSafe(resolved)
-          if (!exists)
-            return yield* Effect.fail(new Error(`Directory not found: ${resolved}`))
+          if (!exists) return yield* Effect.die(new Error(`Directory not found: ${resolved}`))
 
           const dir = yield* fs.isDir(resolved)
-          if (!dir)
-            return yield* Effect.fail(new Error(`Not a directory: ${resolved}`))
+          if (!dir) return yield* Effect.die(new Error(`Not a directory: ${resolved}`))
 
           Instance.chdir(resolved)
 
