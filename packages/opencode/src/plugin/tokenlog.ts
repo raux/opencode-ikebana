@@ -154,8 +154,28 @@ function props(event: Record<string, unknown>) {
   return (event as { properties?: Record<string, unknown> }).properties
 }
 
-export async function TokenLogPlugin(_input: PluginInput): Promise<Hooks> {
+export async function TokenLogPlugin(input: PluginInput): Promise<Hooks> {
   log.info("tokenlog plugin loaded")
+
+  async function resolve(sid: string, mid: string) {
+    try {
+      const res = await input.client.session.message({ path: { id: sid, messageID: mid } })
+      const info = res.data?.info as Record<string, string> | undefined
+      if (info?.role === "assistant") {
+        const meta = {
+          sessionID: info.sessionID ?? sid,
+          agent: info.agent ?? "unknown",
+          providerID: info.providerID ?? "unknown",
+          modelID: info.modelID ?? "unknown",
+        }
+        messages.set(mid, meta)
+        return meta
+      }
+    } catch (err) {
+      log.warn("failed to fetch assistant message", { sessionID: sid, messageID: mid, error: err })
+    }
+    return undefined
+  }
 
   return {
     async event({ event }) {
@@ -179,16 +199,19 @@ export async function TokenLogPlugin(_input: PluginInput): Promise<Hooks> {
       if (event.type === "message.part.updated") {
         const part = p.part as Record<string, unknown> | undefined
         if (part?.type !== "step-finish") return
-        const meta = messages.get(part.messageID as string)
+
+        const sid = (part.sessionID as string) || (p.sessionID as string)
+        const mid = part.messageID as string
+        const meta = messages.get(mid) ?? await resolve(sid, mid)
         if (!meta) {
-          log.warn("step-finish without matching assistant message", { messageID: part.messageID as string })
+          log.warn("step-finish without matching assistant message", { sessionID: sid, messageID: mid })
           return
         }
 
         const entry: Entry = {
           ts: new Date().toISOString(),
           sessionID: meta.sessionID,
-          messageID: part.messageID as string,
+          messageID: mid,
           agent: meta.agent,
           providerID: meta.providerID,
           modelID: meta.modelID,
