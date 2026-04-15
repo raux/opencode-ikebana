@@ -160,13 +160,13 @@ export async function TokenLogPlugin(input: PluginInput): Promise<Hooks> {
   async function resolve(sid: string, mid: string) {
     try {
       const res = await input.client.session.message({ path: { id: sid, messageID: mid } })
-      const info = res.data?.info as Record<string, string> | undefined
-      if (info?.role === "assistant") {
+      const msg = res.data?.info as Record<string, string> | undefined
+      if (msg?.role === "assistant") {
         const meta = {
-          sessionID: info.sessionID ?? sid,
-          agent: info.agent ?? "unknown",
-          providerID: info.providerID ?? "unknown",
-          modelID: info.modelID ?? "unknown",
+          sessionID: sid,
+          agent: msg.agent ?? "unknown",
+          providerID: msg.providerID ?? "unknown",
+          modelID: msg.modelID ?? "unknown",
         }
         messages.set(mid, meta)
         return meta
