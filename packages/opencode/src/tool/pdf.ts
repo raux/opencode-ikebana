@@ -21,13 +21,11 @@ export const PdfTool = Tool.define(
       parameters,
       execute: (params: z.infer<typeof parameters>, ctx: Tool.Context) =>
         Effect.gen(function* () {
-          let filepath = params.filePath
-          if (!path.isAbsolute(filepath)) {
-            filepath = path.resolve(Instance.directory, filepath)
-          }
-          if (process.platform === "win32") {
-            filepath = AppFileSystem.normalizePath(filepath)
-          }
+          const resolved = path.isAbsolute(params.filePath)
+            ? params.filePath
+            : path.resolve(Instance.directory, params.filePath)
+          const filepath =
+            process.platform === "win32" ? AppFileSystem.normalizePath(resolved) : resolved
           const title = path.relative(Instance.worktree, filepath)
 
           const stat = yield* fs.stat(filepath).pipe(
