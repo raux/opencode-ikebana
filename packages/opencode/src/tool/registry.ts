@@ -27,6 +27,7 @@ import { Log } from "@/util/log"
 import { LspTool } from "./lsp"
 import { Truncate } from "./truncate"
 import { ApplyPatchTool } from "./apply_patch"
+import { PdfTool } from "./pdf"
 import { Glob } from "../util/glob"
 import path from "path"
 import { pathToFileURL } from "url"
@@ -124,6 +125,7 @@ export namespace ToolRegistry {
       const edit = yield* EditTool
       const greptool = yield* GrepTool
       const patchtool = yield* ApplyPatchTool
+      const pdftool = yield* PdfTool
       const skilltool = yield* SkillTool
 
       const state = yield* InstanceState.make<State>(
@@ -200,6 +202,7 @@ export namespace ToolRegistry {
             code: Tool.init(codesearch),
             skill: Tool.init(skilltool),
             patch: Tool.init(patchtool),
+            pdf: Tool.init(pdftool),
             question: Tool.init(question),
             lsp: Tool.init(lsptool),
             plan: Tool.init(plan),
@@ -224,6 +227,7 @@ export namespace ToolRegistry {
               tool.code,
               tool.skill,
               tool.patch,
+              tool.pdf,
               ...(Flag.OPENCODE_EXPERIMENTAL_LSP_TOOL ? [tool.lsp] : []),
               ...(Flag.OPENCODE_EXPERIMENTAL_PLAN_MODE && Flag.OPENCODE_CLIENT === "cli" ? [tool.plan] : []),
             ],

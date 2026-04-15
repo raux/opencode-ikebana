@@ -1,0 +1,9 @@
+Read a PDF file and extract its text content as markdown.
+
+Usage:
+- The filePath parameter must be an absolute path to a PDF file.
+- Extracts text content from the PDF and returns it as markdown.
+- Supports multi-page PDFs; each page is separated by a heading.
+- Use this tool when you need to read and understand the text content of a PDF.
+- For simply attaching a PDF (e.g. for vision models), use the read tool instead.
+- If you are unsure of the correct file path, use the glob tool to find PDF files.
