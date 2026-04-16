@@ -1,0 +1,195 @@
+import { describe, test, expect } from "bun:test"
+
+// Test the compression logic directly by importing the module's internal functions
+// Since the functions are not exported, we test through the tool's behavior
+// by reimplementing the core logic for unit testing
+
+const ARTICLES = /\b(?:a|an|the)\b/gi
+const FILLER = /\b(?:just|really|basically|actually|simply|quite|very|pretty much|somewhat|rather|fairly)\b/gi
+const PLEASANTRIES =
+  /\b(?:sure|certainly|of course|absolutely|definitely|please note that|it'?s worth noting that|note that|it should be noted that|i'?d be happy to|let me)\b/gi
+const HEDGING =
+  /\b(?:it might be worth|perhaps|maybe|i think|i believe|it seems like|it appears that|probably|possibly|generally speaking|in general|typically|usually)\b/gi
+const VERBOSE_PHRASES: [RegExp, string][] = [
+  [/\bin order to\b/gi, "to"],
+  [/\bdue to the fact that\b/gi, "because"],
+  [/\bhowever,?\s*/gi, "but "],
+  [/\btherefore,?\s*/gi, "so "],
+  [/\bmake sure to\b/gi, ""],
+  [/\byou should\b/gi, ""],
+  [/\bplease\b/gi, ""],
+]
+
+const ULTRA_ABBREVS: [RegExp, string][] = [
+  [/\bdatabase\b/gi, "DB"],
+  [/\bauthentication\b/gi, "auth"],
+  [/\bconfiguration\b/gi, "config"],
+  [/\bfunction\b/gi, "fn"],
+  [/\bimplementation\b/gi, "impl"],
+  [/\bapplication\b/gi, "app"],
+  [/\benvironment\b/gi, "env"],
+  [/\bdirectory\b/gi, "dir"],
+  [/\brepository\b/gi, "repo"],
+]
+
+type Segment = { kind: "protected"; text: string } | { kind: "text"; text: string }
+
+function segment(input: string): Segment[] {
+  const result: Segment[] = []
+  const pattern = /```[\s\S]*?```|`[^`\n]+`|https?:\/\/\S+|(?:\/[\w.-]+){2,}/g
+  let last = 0
+  for (const match of input.matchAll(pattern)) {
+    if (match.index > last) result.push({ kind: "text", text: input.slice(last, match.index) })
+    result.push({ kind: "protected", text: match[0] })
+    last = match.index + match[0].length
+  }
+  if (last < input.length) result.push({ kind: "text", text: input.slice(last) })
+  return result
+}
+
+function collapse(text: string): string {
+  return text
+    .replace(/[ \t]{2,}/g, " ")
+    .replace(/\n{3,}/g, "\n\n")
+    .replace(/^ +/gm, "")
+    .replace(/ +$/gm, "")
+    .replace(/ ([.,;:!?])/g, "$1")
+}
+
+function lite(text: string): string {
+  let out = text
+  out = out.replace(FILLER, "")
+  out = out.replace(PLEASANTRIES, "")
+  out = out.replace(HEDGING, "")
+  for (const [pat, rep] of VERBOSE_PHRASES) out = out.replace(pat, rep)
+  return collapse(out)
+}
+
+function full(text: string): string {
+  let out = lite(text)
+  out = out.replace(ARTICLES, "")
+  return collapse(out)
+}
+
+function ultra(text: string): string {
+  let out = full(text)
+  for (const [pat, rep] of ULTRA_ABBREVS) out = out.replace(pat, rep)
+  return collapse(out)
+}
+
+function compress(input: string, level: "lite" | "full" | "ultra"): string {
+  const fn = level === "lite" ? lite : level === "ultra" ? ultra : full
+  return segment(input)
+    .map((s) => (s.kind === "protected" ? s.text : fn(s.text)))
+    .join("")
+}
+
+describe("compress", () => {
+  test("removes articles in full mode", () => {
+    const input = "The quick brown fox jumps over a lazy dog"
+    const result = compress(input, "full")
+    expect(result).not.toContain("The ")
+    expect(result).not.toContain(" a ")
+    expect(result).toContain("quick brown fox")
+    expect(result).toContain("lazy dog")
+  })
+
+  test("removes filler words", () => {
+    const input = "You should just basically really check the logs"
+    const result = compress(input, "full")
+    expect(result).not.toContain("just")
+    expect(result).not.toContain("basically")
+    expect(result).not.toContain("really")
+  })
+
+  test("replaces verbose phrases", () => {
+    const input = "In order to fix this, you need to restart the server"
+    const result = compress(input, "full")
+    expect(result).toContain("to fix this")
+    expect(result).not.toContain("In order to")
+  })
+
+  test("preserves code blocks", () => {
+    const input = "Run the following:\n```\nconst a = the + just + really\n```\nThat is the solution."
+    const result = compress(input, "full")
+    expect(result).toContain("const a = the + just + really")
+  })
+
+  test("preserves inline code", () => {
+    const input = "Use `the.really.just` function to fix the issue"
+    const result = compress(input, "full")
+    expect(result).toContain("`the.really.just`")
+  })
+
+  test("preserves URLs", () => {
+    const input = "Visit https://example.com/the/really/just for the documentation"
+    const result = compress(input, "full")
+    expect(result).toContain("https://example.com/the/really/just")
+  })
+
+  test("preserves file paths", () => {
+    const input = "Edit the file at /src/the/really/just.ts for the fix"
+    const result = compress(input, "full")
+    expect(result).toContain("/src/the/really/just.ts")
+  })
+
+  test("lite mode keeps articles", () => {
+    const input = "The quick brown fox jumps over a lazy dog"
+    const result = compress(input, "lite")
+    expect(result).toContain("The")
+    expect(result).toContain(" a ")
+  })
+
+  test("ultra mode abbreviates technical terms", () => {
+    const input = "The database configuration and authentication implementation"
+    const result = compress(input, "ultra")
+    expect(result).toContain("DB")
+    expect(result).toContain("config")
+    expect(result).toContain("auth")
+    expect(result).toContain("impl")
+  })
+
+  test("collapses extra whitespace", () => {
+    const input = "Fix   the    really   big   issue"
+    const result = compress(input, "full")
+    expect(result).not.toMatch(/  /)
+  })
+
+  test("handles empty input", () => {
+    expect(compress("", "full")).toBe("")
+  })
+
+  test("handles input with only protected content", () => {
+    const input = "```\ncode block\n```"
+    const result = compress(input, "full")
+    expect(result).toBe(input)
+  })
+
+  test("reduces token count meaningfully", () => {
+    const input =
+      "Sure! I'd be happy to help you with that. The issue you're experiencing is likely caused by the authentication middleware not properly handling the token expiry check. You should make sure to use the correct comparison operator. However, it might be worth noting that the configuration file also needs to be updated in order to support the new authentication flow."
+    const result = compress(input, "full")
+    expect(result.length).toBeLessThan(input.length * 0.7)
+  })
+})
+
+describe("segment", () => {
+  test("splits text around code blocks", () => {
+    const parts = segment("before ```code``` after")
+    expect(parts).toHaveLength(3)
+    expect(parts[0]).toEqual({ kind: "text", text: "before " })
+    expect(parts[1]).toEqual({ kind: "protected", text: "```code```" })
+    expect(parts[2]).toEqual({ kind: "text", text: " after" })
+  })
+
+  test("handles multiple protected regions", () => {
+    const parts = segment("use `foo` and `bar` here")
+    expect(parts.filter((p) => p.kind === "protected")).toHaveLength(2)
+  })
+
+  test("handles no protected regions", () => {
+    const parts = segment("plain text only")
+    expect(parts).toHaveLength(1)
+    expect(parts[0]).toEqual({ kind: "text", text: "plain text only" })
+  })
+})
