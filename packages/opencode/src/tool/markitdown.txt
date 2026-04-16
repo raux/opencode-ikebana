@@ -1,0 +1,13 @@
+Convert a file to Markdown using the markitdown converter system.
+
+Supported formats:
+- PDF files (.pdf) - extracts text content with page markers
+- HTML files (.html, .htm) - converts to clean markdown
+- Plain text files (.txt, .md, .rst, .log, .csv)
+
+Usage:
+- Provide the absolute path to the file to convert.
+- Returns the file content converted to Markdown format.
+- For PDF files, each page is separated by a horizontal rule with a page number comment.
+- Use this tool when you need to extract readable text from PDF documents or convert HTML to Markdown.
+- The read tool already handles PDF files by sending them as attachments. Use this tool instead when you want the content as structured Markdown text.
