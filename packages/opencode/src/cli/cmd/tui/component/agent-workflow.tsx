@@ -95,10 +95,16 @@ export function AgentWorkflow(props: { sessionID: string }) {
         const part = parts[j]
         if (part.type !== "tool") continue
         const tp = part as ToolPart
-        if (tp.state.status === "running" || tp.state.status === "pending") {
+        if (tp.state.status === "running") {
           return {
             name: tp.tool,
-            title: (tp.state as any).title ?? "",
+            title: tp.state.title ?? "",
+          }
+        }
+        if (tp.state.status === "pending") {
+          return {
+            name: tp.tool,
+            title: "",
           }
         }
       }
@@ -108,8 +114,8 @@ export function AgentWorkflow(props: { sessionID: string }) {
 
   function lastError(messages: Message[]): string | undefined {
     const last = messages.findLast((x) => x.role === "assistant")
-    if (!last || last.role !== "assistant") return undefined
-    if (!last.error) return undefined
+    if (!last) return undefined
+    if (last.role !== "assistant" || !last.error) return undefined
     const data = last.error.data as Record<string, unknown> | undefined
     return (data?.message as string) ?? last.error.name
   }
@@ -118,8 +124,8 @@ export function AgentWorkflow(props: { sessionID: string }) {
     const first = messages.find((x) => x.role === "user")
     if (!first) return 0
     const last = messages.findLast((x) => x.role === "assistant")
-    if (!last || last.role !== "assistant") return 0
-    if (!last.time.completed) return 0
+    if (!last) return 0
+    if (last.role !== "assistant" || !last.time.completed) return 0
     return last.time.completed - first.time.created
   }
 
@@ -208,11 +214,13 @@ export function AgentWorkflow(props: { sessionID: string }) {
                     <b>{agent.label}</b>
                   </span>
                   <Show when={agent.tool}>
-                    <span style={{ fg: theme.textMuted }}>
-                      {" "}
-                      {Locale.titlecase(agent.tool!.name)}
-                      <Show when={agent.tool!.title}> {agent.tool!.title}</Show>
-                    </span>
+                    {(t) => (
+                      <span style={{ fg: theme.textMuted }}>
+                        {" "}
+                        {Locale.titlecase(t().name)}
+                        <Show when={t().title}> {t().title}</Show>
+                      </span>
+                    )}
                   </Show>
                 </Spinner>
               </Show>
