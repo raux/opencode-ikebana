@@ -2,11 +2,10 @@
 
 This is a independent fork of OpenCode. 
 
-This is NOT built by the OpenCode team and is not affiliated with us in any way.
+This is NOT built by the OpenCode team and is not affiliated in any way. Use at your own risk.
 
 This version is built by the Software Engineering Research Team at The University of Osaka and is intended for Research Purposes.
-
-Our idea is to build a harness that will be used by researchers for replications and indepth tracking of Agentic activities when building code. 
+Our idea is to build a orchestration environment that will be used by researchers for replications and indepth tracking of AI Agents while going about their business. 
 
 ## Installation (BETA)
 
