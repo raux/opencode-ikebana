@@ -189,7 +189,7 @@ export function AgentWorkflow(props: { sessionID: string }) {
               <Show
                 when={agent.state === "working"}
                 fallback={
-                  <text wrapMode="truncate">
+                  <text wrapMode="none">
                     <span style={{ fg: stateColor(agent.state) }}>{stateIcon(agent.state)}</span>{" "}
                     <span style={{ fg: agent.color }}>
                       <b>{agent.label}</b>

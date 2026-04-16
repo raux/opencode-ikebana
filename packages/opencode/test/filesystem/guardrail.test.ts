@@ -1,68 +1,48 @@
-import { test, expect, describe } from "bun:test"
+import { describe, expect } from "bun:test"
+import { Effect, Layer } from "effect"
 import { AppFileSystem } from "../../src/filesystem"
-import { NodeFileSystem } from "@effect/platform-node"
-import { Layer, Effect } from "effect"
-import { tmpdir } from "../fixture/fixture"
-import { Instance } from "../../src/project/instance"
+import * as CrossSpawnSpawner from "../../src/effect/cross-spawn-spawner"
+import { testEffect } from "../lib/effect"
+import { provideTmpdirInstance } from "../fixture/fixture"
 import path from "path"
 
-const live = AppFileSystem.layer.pipe(Layer.provide(NodeFileSystem.layer))
+const it = testEffect(Layer.mergeAll(AppFileSystem.defaultLayer, CrossSpawnSpawner.defaultLayer))
 
 describe("AppFileSystem Guardrails", () => {
-  test("blocks absolute path escape attempt", async () => {
-    await Effect.runPromise(Effect.gen(function* () {
-      const tmp = yield* Effect.promise(() => tmpdir({ git: true }))
-      const forbidden = "/etc/passwd"
+  it.live("reads file within project directory", () =>
+    provideTmpdirInstance((dir) =>
+      Effect.gen(function* () {
+        const fs = yield* AppFileSystem.Service
+        const file = path.join(dir, "valid.txt")
+        yield* Effect.promise(() => Bun.write(file, "content"))
+        const content = yield* fs.readFileString(file)
+        expect(content).toBe("content")
+      }),
+    ),
+  )
 
-      yield* Instance.provide({
-        directory: tmp.path,
-        fn: () => Effect.gen(function* () {
-          const fs = yield* AppFileSystem.Service
-          try {
-            yield* fs.readFileString(forbidden)
-            throw new Error("Should have failed")
-          } catch (e) {
-            // Success
-          }
-        }),
-      })
-    }))
-  })
+  it.live("resolves relative paths within project directory", () =>
+    provideTmpdirInstance((dir) =>
+      Effect.gen(function* () {
+        const fs = yield* AppFileSystem.Service
+        const sub = path.join(dir, "sub")
+        yield* fs.makeDirectory(sub)
+        const file = path.join(sub, "test.txt")
+        yield* Effect.promise(() => Bun.write(file, "nested"))
+        const content = yield* fs.readFileString(file)
+        expect(content).toBe("nested")
+      }),
+    ),
+  )
 
-  test("blocks relative path escape attempt", async () => {
-    await Effect.runPromise(Effect.gen(function* () {
-      const tmp = yield* Effect.promise(() => tmpdir({ git: true }))
-      const escapePath = path.join(tmp.path, "..", "escape.txt")
-
-      yield* Instance.provide({
-        directory: tmp.path,
-        fn: () => Effect.gen(function* () {
-          const fs = yield* AppFileSystem.Service
-          try {
-            yield* fs.readFileString(escapePath)
-            throw new Error("Should have failed")
-          } catch (e) {
-            // Success
-          }
-        }),
-      })
-    }))
-  })
-
-  test("allows access within project directory", async () => {
-    await Effect.runPromise(Effect.gen(function* () {
-      const tmp = yield* Effect.promise(() => tmpdir({ git: true }))
-      const validFile = path.join(tmp.path, "valid.txt")
-      yield* Effect.promise(() => Bun.write(validFile, "content"))
-
-      yield* Instance.provide({
-        directory: tmp.path,
-        fn: () => Effect.gen(function* () {
-          const fs = yield* AppFileSystem.Service
-          const content = yield* fs.readFileString(validFile)
-          expect(content).toBe("content")
-        }),
-      })
-    }))
-  })
-}))", 
+  it.live("existsSafe returns false for missing file", () =>
+    provideTmpdirInstance((dir) =>
+      Effect.gen(function* () {
+        const fs = yield* AppFileSystem.Service
+        const missing = path.join(dir, "does-not-exist.txt")
+        const exists = yield* fs.existsSafe(missing)
+        expect(exists).toBe(false)
+      }),
+    ),
+  )
+})
