@@ -89,9 +89,9 @@ const ULTRA_ABBREVS: [RegExp, string][] = [
   [/\band then\b/gi, "→"],
 ]
 
-type Segment = { kind: "protected"; text: string } | { kind: "text"; text: string }
+export type Segment = { kind: "protected"; text: string } | { kind: "text"; text: string }
 
-function segment(input: string): Segment[] {
+export function segment(input: string): Segment[] {
   const result: Segment[] = []
   // Match fenced code blocks, inline code, URLs, and file paths
   const pattern = /```[\s\S]*?```|`[^`\n]+`|https?:\/\/\S+|(?:\/[\w.-]+){2,}/g
@@ -135,7 +135,7 @@ function ultra(text: string): string {
   return collapse(out)
 }
 
-function compress(input: string, level: "lite" | "full" | "ultra"): string {
+export function compress(input: string, level: "lite" | "full" | "ultra"): string {
   const fn = level === "lite" ? lite : level === "ultra" ? ultra : full
   return segment(input)
     .map((s) => (s.kind === "protected" ? s.text : fn(s.text)))

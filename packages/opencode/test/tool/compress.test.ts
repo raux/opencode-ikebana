@@ -1,88 +1,5 @@
 import { describe, test, expect } from "bun:test"
-
-// Test the compression logic directly by importing the module's internal functions
-// Since the functions are not exported, we test through the tool's behavior
-// by reimplementing the core logic for unit testing
-
-const ARTICLES = /\b(?:a|an|the)\b/gi
-const FILLER = /\b(?:just|really|basically|actually|simply|quite|very|pretty much|somewhat|rather|fairly)\b/gi
-const PLEASANTRIES =
-  /\b(?:sure|certainly|of course|absolutely|definitely|please note that|it'?s worth noting that|note that|it should be noted that|i'?d be happy to|let me)\b/gi
-const HEDGING =
-  /\b(?:it might be worth|perhaps|maybe|i think|i believe|it seems like|it appears that|probably|possibly|generally speaking|in general|typically|usually)\b/gi
-const VERBOSE_PHRASES: [RegExp, string][] = [
-  [/\bin order to\b/gi, "to"],
-  [/\bdue to the fact that\b/gi, "because"],
-  [/\bhowever,?\s*/gi, "but "],
-  [/\btherefore,?\s*/gi, "so "],
-  [/\bmake sure to\b/gi, ""],
-  [/\byou should\b/gi, ""],
-  [/\bplease\b/gi, ""],
-]
-
-const ULTRA_ABBREVS: [RegExp, string][] = [
-  [/\bdatabase\b/gi, "DB"],
-  [/\bauthentication\b/gi, "auth"],
-  [/\bconfiguration\b/gi, "config"],
-  [/\bfunction\b/gi, "fn"],
-  [/\bimplementation\b/gi, "impl"],
-  [/\bapplication\b/gi, "app"],
-  [/\benvironment\b/gi, "env"],
-  [/\bdirectory\b/gi, "dir"],
-  [/\brepository\b/gi, "repo"],
-]
-
-type Segment = { kind: "protected"; text: string } | { kind: "text"; text: string }
-
-function segment(input: string): Segment[] {
-  const result: Segment[] = []
-  const pattern = /```[\s\S]*?```|`[^`\n]+`|https?:\/\/\S+|(?:\/[\w.-]+){2,}/g
-  let last = 0
-  for (const match of input.matchAll(pattern)) {
-    if (match.index > last) result.push({ kind: "text", text: input.slice(last, match.index) })
-    result.push({ kind: "protected", text: match[0] })
-    last = match.index + match[0].length
-  }
-  if (last < input.length) result.push({ kind: "text", text: input.slice(last) })
-  return result
-}
-
-function collapse(text: string): string {
-  return text
-    .replace(/[ \t]{2,}/g, " ")
-    .replace(/\n{3,}/g, "\n\n")
-    .replace(/^ +/gm, "")
-    .replace(/ +$/gm, "")
-    .replace(/ ([.,;:!?])/g, "$1")
-}
-
-function lite(text: string): string {
-  let out = text
-  out = out.replace(FILLER, "")
-  out = out.replace(PLEASANTRIES, "")
-  out = out.replace(HEDGING, "")
-  for (const [pat, rep] of VERBOSE_PHRASES) out = out.replace(pat, rep)
-  return collapse(out)
-}
-
-function full(text: string): string {
-  let out = lite(text)
-  out = out.replace(ARTICLES, "")
-  return collapse(out)
-}
-
-function ultra(text: string): string {
-  let out = full(text)
-  for (const [pat, rep] of ULTRA_ABBREVS) out = out.replace(pat, rep)
-  return collapse(out)
-}
-
-function compress(input: string, level: "lite" | "full" | "ultra"): string {
-  const fn = level === "lite" ? lite : level === "ultra" ? ultra : full
-  return segment(input)
-    .map((s) => (s.kind === "protected" ? s.text : fn(s.text)))
-    .join("")
-}
+import { compress, segment } from "../../src/tool/compress"
 
 describe("compress", () => {
   test("removes articles in full mode", () => {
@@ -165,10 +82,12 @@ describe("compress", () => {
     expect(result).toBe(input)
   })
 
-  test("reduces token count meaningfully", () => {
+  test("reduces verbose LLM-style output significantly", () => {
     const input =
       "Sure! I'd be happy to help you with that. The issue you're experiencing is likely caused by the authentication middleware not properly handling the token expiry check. You should make sure to use the correct comparison operator. However, it might be worth noting that the configuration file also needs to be updated in order to support the new authentication flow."
     const result = compress(input, "full")
+    // Verbose LLM output with articles, filler, pleasantries, and hedging
+    // should be reduced by at least 30% in character count
     expect(result.length).toBeLessThan(input.length * 0.7)
   })
 })
