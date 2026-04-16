@@ -4,6 +4,7 @@ import { useTheme } from "../../context/theme"
 import { useTuiConfig } from "../../context/tui-config"
 import { Installation } from "@/installation"
 import { TuiPluginRuntime } from "../../plugin"
+import { AgentWorkflow } from "../../component/agent-workflow"
 
 import { getScrollAcceleration } from "../../util/scroll"
 
@@ -53,6 +54,7 @@ export function Sidebar(props: { sessionID: string; overlay?: boolean }) {
                 </Show>
               </box>
             </TuiPluginRuntime.Slot>
+            <AgentWorkflow sessionID={props.sessionID} />
             <TuiPluginRuntime.Slot name="sidebar_content" session_id={props.sessionID} />
           </box>
         </scrollbox>
