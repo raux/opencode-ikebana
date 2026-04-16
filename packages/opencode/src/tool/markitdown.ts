@@ -70,7 +70,7 @@ export const MarkitdownTool = Tool.define(
             output: `${header}${result.markdown}`,
             metadata: {
               filepath,
-              pages: result.title,
+              title: result.title,
             },
           }
         }).pipe(Effect.orDie),

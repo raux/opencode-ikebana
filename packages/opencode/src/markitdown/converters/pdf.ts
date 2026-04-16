@@ -13,19 +13,19 @@ export class PdfConverter implements DocumentConverter {
   async convert(data: Uint8Array, _info: StreamInfo): Promise<ConverterResult> {
     const { extractText, getDocumentProxy } = await import("unpdf")
     const pdf = await getDocumentProxy(new Uint8Array(data))
-    const { text, totalPages } = await extractText(pdf, { mergePages: false })
-    const pages = text as unknown as string[]
+    const result = await extractText(pdf, { mergePages: false })
+    const pages: string[] = Array.isArray(result.text) ? result.text : [result.text]
 
     const parts: string[] = []
     for (let i = 0; i < pages.length; i++) {
       const content = (pages[i] ?? "").trim()
       if (!content) continue
-      parts.push(`<!-- Page ${i + 1} of ${totalPages} -->\n\n${content}`)
+      parts.push(`<!-- Page ${i + 1} of ${result.totalPages} -->\n\n${content}`)
     }
 
     return {
       markdown: parts.join("\n\n---\n\n"),
-      title: `PDF Document (${totalPages} pages)`,
+      title: `PDF Document (${result.totalPages} pages)`,
     }
   }
 }

@@ -10,7 +10,7 @@ import { HtmlConverter } from "./converters/html"
 import { PlainTextConverter } from "./converters/plain-text"
 
 export class MarkItDown {
-  private converters: ConverterRegistration[] = []
+  private sorted: ConverterRegistration[] = []
 
   constructor(opts?: { builtins?: boolean }) {
     if (opts?.builtins !== false) this.builtins()
@@ -23,14 +23,13 @@ export class MarkItDown {
   }
 
   register(converter: DocumentConverter, priority = PRIORITY_SPECIFIC) {
-    this.converters.push({ converter, priority })
+    this.sorted.push({ converter, priority })
+    this.sorted.sort((a, b) => a.priority - b.priority)
   }
 
   async convert(data: Uint8Array, info: StreamInfo): Promise<ConverterResult> {
-    const sorted = [...this.converters].sort((a, b) => a.priority - b.priority)
-
     const errors: Error[] = []
-    for (const reg of sorted) {
+    for (const reg of this.sorted) {
       if (!reg.converter.accepts(data, info)) continue
       try {
         return await reg.converter.convert(data, info)
