@@ -28,6 +28,7 @@ import { LspTool } from "./lsp"
 import { Truncate } from "./truncate"
 import { ApplyPatchTool } from "./apply_patch"
 import { MarkitdownTool } from "./markitdown"
+import { CompressTool } from "./compress"
 import { Glob } from "../util/glob"
 import path from "path"
 import { pathToFileURL } from "url"
@@ -127,6 +128,7 @@ export namespace ToolRegistry {
       const patchtool = yield* ApplyPatchTool
       const skilltool = yield* SkillTool
       const markitdown = yield* MarkitdownTool
+      const compresstool = yield* CompressTool
 
       const state = yield* InstanceState.make<State>(
         Effect.fn("ToolRegistry.state")(function* (ctx) {
@@ -203,6 +205,7 @@ export namespace ToolRegistry {
             skill: Tool.init(skilltool),
             patch: Tool.init(patchtool),
             markitdown: Tool.init(markitdown),
+            compress: Tool.init(compresstool),
             question: Tool.init(question),
             lsp: Tool.init(lsptool),
             plan: Tool.init(plan),
@@ -228,6 +231,7 @@ export namespace ToolRegistry {
               tool.skill,
               tool.patch,
               tool.markitdown,
+              tool.compress,
               ...(Flag.OPENCODE_EXPERIMENTAL_LSP_TOOL ? [tool.lsp] : []),
               ...(Flag.OPENCODE_EXPERIMENTAL_PLAN_MODE && Flag.OPENCODE_CLIENT === "cli" ? [tool.plan] : []),
             ],

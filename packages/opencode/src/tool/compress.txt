@@ -1,0 +1,7 @@
+- Reduces token count in text content using caveman-style compression
+- Removes articles (a/an/the), filler words, pleasantries, and hedging while preserving all technical substance
+- Preserves code blocks, inline code, URLs, file paths, headings, and commands exactly
+- Use this tool to compress large text content before including it in context
+- Accepts either a file path to read and compress, or direct text content
+- Returns the compressed text along with reduction statistics
+- Three compression levels: "lite" (professional), "full" (default, fragments ok), "ultra" (maximum abbreviation)
