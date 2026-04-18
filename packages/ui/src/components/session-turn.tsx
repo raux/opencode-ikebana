@@ -19,7 +19,7 @@ import { Accordion } from "./accordion"
 import { StickyAccordionHeader } from "./sticky-accordion-header"
 import { DiffChanges } from "./diff-changes"
 import { Icon } from "./icon"
-import { TextShimmer } from "./text-shimmer"
+import { StreamNetstat } from "./stream-netstat"
 import { SessionRetry } from "./session-retry"
 import { TextReveal } from "./text-reveal"
 import { createAutoScroll } from "../hooks"
@@ -369,6 +369,13 @@ export function SessionTurn(
     return true
   })
 
+  const lastAssistant = createMemo(() => assistantMessages().at(-1))
+  const lastAssistantParts = createMemo(() => {
+    const msg = lastAssistant()
+    if (!msg) return emptyParts
+    return list(data.store.part?.[msg.id], emptyParts)
+  })
+
   const autoScroll = createAutoScroll({
     working,
     onUserInteracted: props.onUserInteracted,
@@ -414,7 +421,11 @@ export function SessionTurn(
               </Show>
               <Show when={showThinking()}>
                 <div data-slot="session-turn-thinking">
-                  <TextShimmer text={i18n.t("ui.sessionTurn.status.thinking")} />
+                  <StreamNetstat
+                    message={lastAssistant()}
+                    parts={lastAssistantParts()}
+                    working={working()}
+                  />
                   <Show when={!showReasoningSummaries()}>
                     <TextReveal
                       text={reasoningHeading()}

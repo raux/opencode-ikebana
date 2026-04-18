@@ -1436,6 +1436,27 @@ PART_MAPPING["text"] = function TextPartDisplay(props) {
     })
   })
 
+  const tokenCount = createMemo(() => {
+    if (props.message.role !== "assistant") return ""
+    const msg = props.message as AssistantMessage
+    if (!msg.time.completed) return ""
+    const total = msg.tokens.input + msg.tokens.output + msg.tokens.reasoning + msg.tokens.cache.read + msg.tokens.cache.write
+    if (total <= 0) return ""
+    return i18n.t("ui.netstat.tokens", { count: total.toLocaleString(i18n.locale()) })
+  })
+
+  const costLabel = createMemo(() => {
+    if (props.message.role !== "assistant") return ""
+    const msg = props.message as AssistantMessage
+    if (!msg.time.completed || msg.cost <= 0) return ""
+    return new Intl.NumberFormat(i18n.locale(), {
+      style: "currency",
+      currency: "USD",
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 4,
+    }).format(msg.cost)
+  })
+
   const meta = createMemo(() => {
     if (props.message.role !== "assistant") return ""
     const agent = (props.message as AssistantMessage).agent
@@ -1443,6 +1464,8 @@ PART_MAPPING["text"] = function TextPartDisplay(props) {
       agent ? agent[0]?.toUpperCase() + agent.slice(1) : "",
       model(),
       duration(),
+      tokenCount(),
+      costLabel(),
       interrupted() ? i18n.t("ui.message.interrupted") : "",
     ]
     return items.filter((x) => !!x).join(" \u00B7 ")

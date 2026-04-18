@@ -7,6 +7,7 @@ import {
   For,
   Match,
   on,
+  onCleanup,
   onMount,
   Show,
   Switch,
@@ -1350,6 +1351,7 @@ function AssistantMessage(props: { message: AssistantMessage; parts: Part[]; las
   const local = useLocal()
   const { theme } = useTheme()
   const sync = useSync()
+  const sdk = useSDK()
   const messages = createMemo(() => sync.data.message[props.message.sessionID] ?? [])
   const model = createMemo(() => Model.name(ctx.providers(), props.message.providerID, props.message.modelID))
 
@@ -1365,10 +1367,65 @@ function AssistantMessage(props: { message: AssistantMessage; parts: Part[]; las
     return props.message.time.completed - user.time.created
   })
 
+  const streaming = createMemo(() => !props.message.time.completed)
+  const [tick, setTick] = createSignal(0)
+
+  createEffect(
+    on(streaming, (active) => {
+      if (!active) return
+      const timer = setInterval(() => setTick((n) => n + 1), 100)
+      onCleanup(() => clearInterval(timer))
+    }),
+  )
+
+  const elapsed = createMemo(() => {
+    if (!streaming()) return
+    const _ = tick()
+    const ms = Date.now() - props.message.time.created
+    return ms > 0 ? ms : 0
+  })
+
+  const serverPort = createMemo(() => {
+    try {
+      const parsed = new URL(sdk.url)
+      return parsed.port || (parsed.protocol === "https:" ? "443" : "80")
+    } catch {
+      return
+    }
+  })
+
+  const opened = createMemo(() => new Date(props.message.time.created).toLocaleTimeString())
+
+  const tokenTotal = createMemo(() => {
+    const msg = props.message
+    return msg.tokens.input + msg.tokens.output + msg.tokens.reasoning + msg.tokens.cache.read + msg.tokens.cache.write
+  })
+
+  const money = createMemo(() => {
+    if (props.message.cost <= 0) return
+    return new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency: "USD",
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 4,
+    }).format(props.message.cost)
+  })
+
   const keybind = useKeybind()
 
   return (
     <>
+      <Show when={streaming() && props.last}>
+        <box paddingLeft={3}>
+          <text fg={theme.textMuted}>
+            ⟳ Streaming · {Locale.duration(elapsed() ?? 0)}
+            <Show when={serverPort()}>
+              <span style={{ fg: theme.textMuted }}> · port {serverPort()}</span>
+            </Show>
+            <span style={{ fg: theme.textMuted }}> · opened {opened()}</span>
+          </text>
+        </box>
+      </Show>
       <For each={props.parts}>
         {(part, index) => {
           const component = createMemo(() => PART_MAPPING[part.type as keyof typeof PART_MAPPING])
@@ -1424,6 +1481,15 @@ function AssistantMessage(props: { message: AssistantMessage; parts: Part[]; las
               <span style={{ fg: theme.textMuted }}> · {model()}</span>
               <Show when={duration()}>
                 <span style={{ fg: theme.textMuted }}> · {Locale.duration(duration())}</span>
+              </Show>
+              <Show when={!streaming() && tokenTotal() > 0}>
+                <span style={{ fg: theme.textMuted }}> · {Locale.number(tokenTotal())} tokens</span>
+              </Show>
+              <Show when={!streaming() && money()}>
+                <span style={{ fg: theme.textMuted }}> · {money()}</span>
+              </Show>
+              <Show when={serverPort()}>
+                <span style={{ fg: theme.textMuted }}> · port {serverPort()}</span>
               </Show>
               <Show when={props.message.error?.name === "MessageAbortedError"}>
                 <span style={{ fg: theme.textMuted }}> · interrupted</span>
