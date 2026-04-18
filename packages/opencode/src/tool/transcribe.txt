@@ -1,0 +1,19 @@
+Transcribe audio from a file to text using speech-to-text.
+
+Use this tool when:
+- The user wants to transcribe an audio or video file
+- The user provides a recording and wants the text content
+- The user asks to convert speech to text
+
+Supported backends (tried in order):
+1. TypeWhisper HTTP API (http://localhost:8978) - macOS, when the TypeWhisper app is running with the API enabled
+2. TypeWhisper CLI (`typewhisper transcribe`) - macOS, when the CLI is installed
+3. System fallback: macOS `afconvert` + `whisper` (if whisper.cpp or openai-whisper is installed)
+
+Usage notes:
+- The file parameter is required and must be a path to an audio file (wav, mp3, m4a, ogg, flac, webm, mp4, etc.)
+- The optional language parameter accepts an ISO 639-1 code (e.g., "en", "de", "ja") to guide recognition
+- The optional task parameter accepts "transcribe" (default) or "translate" (translate to English, engine-dependent)
+- Returns the transcribed text along with metadata like duration and language detected
+- TypeWhisper supports 99+ languages via WhisperKit and on-device models
+- The file path must be absolute or relative to the current working directory

@@ -494,6 +494,8 @@ export namespace Config {
           lsp: PermissionRule.optional(),
           doom_loop: PermissionAction.optional(),
           skill: PermissionRule.optional(),
+          speak: PermissionAction.optional(),
+          transcribe: PermissionRule.optional(),
         })
         .catchall(PermissionRule)
         .or(PermissionAction),
@@ -1098,6 +1100,27 @@ export namespace Config {
             .describe("Timeout in milliseconds for model context protocol (MCP) requests"),
         })
         .optional(),
+      speech: z
+        .object({
+          typewhisper: z
+            .object({
+              url: z
+                .string()
+                .optional()
+                .describe("TypeWhisper HTTP API base URL (default: http://localhost:8978)"),
+            })
+            .optional()
+            .describe("TypeWhisper integration settings"),
+          tts: z
+            .object({
+              voice: z.string().optional().describe("Default voice name for text-to-speech"),
+              rate: z.number().optional().describe("Default speech rate"),
+            })
+            .optional()
+            .describe("Text-to-speech settings"),
+        })
+        .optional()
+        .describe("Speech-to-text and text-to-speech configuration"),
     })
     .strict()
     .meta({
