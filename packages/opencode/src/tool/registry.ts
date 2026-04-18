@@ -29,8 +29,6 @@ import { Truncate } from "./truncate"
 import { ApplyPatchTool } from "./apply_patch"
 import { MarkitdownTool } from "./markitdown"
 import { CompressTool } from "./compress"
-import { SpeakTool } from "./speak"
-import { TranscribeTool } from "./transcribe"
 import { Glob } from "../util/glob"
 import path from "path"
 import { pathToFileURL } from "url"
@@ -131,8 +129,6 @@ export namespace ToolRegistry {
       const skilltool = yield* SkillTool
       const markitdown = yield* MarkitdownTool
       const compresstool = yield* CompressTool
-      const speaktool = yield* SpeakTool
-      const transcribetool = yield* TranscribeTool
 
       const state = yield* InstanceState.make<State>(
         Effect.fn("ToolRegistry.state")(function* (ctx) {
@@ -210,8 +206,6 @@ export namespace ToolRegistry {
             patch: Tool.init(patchtool),
             markitdown: Tool.init(markitdown),
             compress: Tool.init(compresstool),
-            speak: Tool.init(speaktool),
-            transcribe: Tool.init(transcribetool),
             question: Tool.init(question),
             lsp: Tool.init(lsptool),
             plan: Tool.init(plan),
@@ -238,8 +232,6 @@ export namespace ToolRegistry {
               tool.patch,
               tool.markitdown,
               tool.compress,
-              tool.speak,
-              tool.transcribe,
               ...(Flag.OPENCODE_EXPERIMENTAL_LSP_TOOL ? [tool.lsp] : []),
               ...(Flag.OPENCODE_EXPERIMENTAL_PLAN_MODE && Flag.OPENCODE_CLIENT === "cli" ? [tool.plan] : []),
             ],
