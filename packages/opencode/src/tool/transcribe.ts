@@ -128,7 +128,7 @@ export const TranscribeTool = Tool.define(
           language: parsed.language,
           duration: parsed.duration,
           engine: "typewhisper-cli",
-          model: undefined as string | undefined,
+          model: undefined,
         }
       })
 
@@ -170,11 +170,18 @@ export const TranscribeTool = Tool.define(
               (err) =>
                 Effect.succeed({
                   text: "",
-                  language: undefined as string | undefined,
-                  duration: undefined as number | undefined,
+                  language: undefined,
+                  duration: undefined,
                   engine: "none",
-                  model: undefined as string | undefined,
+                  model: undefined,
                   error: err instanceof Error ? err.message : String(err),
+                } as {
+                  text: string
+                  language: string | undefined
+                  duration: number | undefined
+                  engine: string
+                  model: string | undefined
+                  error: string
                 }),
             ),
           )

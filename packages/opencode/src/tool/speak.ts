@@ -33,10 +33,10 @@ function args(platform: string, params: z.infer<typeof Parameters>): string[] {
     return result
   }
   if (platform === "win32") {
-    const escaped = params.text.replace(/'/g, "''")
+    const esc = params.text.replace(/'/g, "''")
     const ps = params.rate
-      ? `$s = New-Object -ComObject SAPI.SpVoice; $s.Rate = ${Math.round((params.rate - 175) / 35)}; $s.Speak('${escaped}')`
-      : `Add-Type -AssemblyName System.Speech; $s = New-Object System.Speech.Synthesis.SpeechSynthesizer; $s.Speak('${escaped}')`
+      ? `$s = New-Object -ComObject SAPI.SpVoice; $s.Rate = ${Math.round((params.rate - 175) / 35)}; $s.Speak('${esc}')`
+      : `Add-Type -AssemblyName System.Speech; $s = New-Object System.Speech.Synthesis.SpeechSynthesizer; $s.Speak('${esc}')`
     return [ps]
   }
   return []
