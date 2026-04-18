@@ -1,10 +1,11 @@
-import { createMemo, Match, onCleanup, onMount, Show, Switch } from "solid-js"
+import { createEffect, createMemo, createSignal, Match, on, onCleanup, onMount, Show, Switch } from "solid-js"
 import { useTheme } from "../../context/theme"
 import { useSync } from "../../context/sync"
 import { useDirectory } from "../../context/directory"
 import { useConnected } from "../../component/dialog-model"
 import { createStore } from "solid-js/store"
 import { useRoute } from "../../context/route"
+import { Locale } from "@/util/locale"
 
 export function Footer() {
   const { theme } = useTheme()
@@ -19,6 +20,35 @@ export function Footer() {
   })
   const directory = useDirectory()
   const connected = useConnected()
+
+  const sessionID = createMemo(() => (route.data.type === "session" ? route.data.sessionID : undefined))
+  const status = createMemo(() => {
+    const id = sessionID()
+    if (!id) return
+    return sync.data.session_status?.[id]
+  })
+  const busy = createMemo(() => status()?.type === "busy")
+
+  const [tick, setTick] = createSignal(0)
+  createEffect(
+    on(busy, (active) => {
+      if (!active) return
+      const timer = setInterval(() => setTick((n) => n + 1), 100)
+      onCleanup(() => clearInterval(timer))
+    }),
+  )
+
+  const elapsed = createMemo(() => {
+    if (!busy()) return
+    const id = sessionID()
+    if (!id) return
+    const _ = tick()
+    const msgs = sync.data.message[id]
+    const last = msgs?.findLast((x) => x.role === "assistant" && !x.time.completed)
+    if (!last) return
+    const ms = Date.now() - last.time.created
+    return ms > 0 ? ms : 0
+  })
 
   const [store, setStore] = createStore({
     welcome: false,
@@ -51,7 +81,12 @@ export function Footer() {
 
   return (
     <box flexDirection="row" justifyContent="space-between" gap={1} flexShrink={0}>
-      <text fg={theme.textMuted}>{directory()}</text>
+      <box gap={1} flexDirection="row" flexShrink={1}>
+        <text fg={theme.textMuted}>{directory()}</text>
+        <Show when={busy() && elapsed()}>
+          <text fg={theme.textMuted}>· ⟳ Streaming {Locale.duration(elapsed()!)}</text>
+        </Show>
+      </box>
       <box gap={2} flexDirection="row" flexShrink={0}>
         <Switch>
           <Match when={store.welcome}>

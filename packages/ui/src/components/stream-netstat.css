@@ -1,0 +1,31 @@
+[data-component="stream-netstat"] {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-small);
+  font-weight: var(--font-weight-regular);
+  line-height: var(--line-height-large);
+  color: var(--text-weak);
+  font-variant-numeric: tabular-nums;
+}
+
+[data-component="stream-netstat"][data-state="streaming"] {
+  color: var(--text-weak);
+}
+
+[data-component="stream-netstat"][data-state="completed"] {
+  cursor: default;
+}
+
+[data-component="stream-netstat"] [data-slot="stream-netstat-label"] {
+  cursor: default;
+}
+
+[data-slot="stream-netstat-detail"] {
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-small);
+  line-height: 1.6;
+  white-space: pre;
+  margin: 0;
+}
