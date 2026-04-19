@@ -29,6 +29,13 @@ export const AcpCommand = cmd({
         baseUrl: `http://${server.hostname}:${server.port}`,
       })
 
+      // Status line for Pattern A UI
+      const updateStatus = (status: "ESTABLISHED" | "CLOSED", color: string) => {
+        process.stdout.write(`\r${color}[STREAM: ${status}] 🟢 Port: ${server.port} 🔴\x1b[0m`)
+      }
+
+      updateStatus("ESTABLISHED", "\x1b[32m") // Green
+
       const input = new WritableStream<Uint8Array>({
         write(chunk) {
           return new Promise<void>((resolve, reject) => {
