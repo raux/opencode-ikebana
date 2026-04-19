@@ -6,6 +6,9 @@ import { Locale } from "@/util/locale"
 import { Spinner } from "./spinner"
 import type { ToolPart, Session, Message } from "@opencode-ai/sdk/v2"
 import { RGBA } from "@opentui/core"
+import { PhaseIndicator, derivePhase } from "./loop-phase"
+import { AgentTree, type AgentNode } from "./agent-tree"
+import { AgentTimeline, buildTimeline } from "./agent-timeline"
 
 const SUBAGENT_COLORS = [
   "#5c9cf5", // blue
@@ -33,6 +36,8 @@ type AgentEntry = {
   tools: number
   tokens: number
   cost: number
+  start: number
+  end?: number
 }
 
 export function AgentWorkflow(props: { sessionID: string }) {
@@ -55,11 +60,8 @@ export function AgentWorkflow(props: { sessionID: string }) {
       .toSorted((a, b) => a.time.created - b.time.created)
 
     const all: AgentEntry[] = []
-
-    // Add parent session first
     all.push(entry(p, local.agent.color(extractAgent(p)), extractLabel(p)))
 
-    // Add child sessions (subagents)
     for (let i = 0; i < children.length; i++) {
       const child = children[i]
       all.push(entry(child, subagentColor(i), extractLabel(child)))
@@ -76,11 +78,27 @@ export function AgentWorkflow(props: { sessionID: string }) {
     const duration = elapsed(messages)
     const tools = countTools(messages)
     const usage = agentUsage(messages)
+    const start = session.time.created
+    const last = messages.findLast((x) => x.role === "assistant")
+    const end = last && last.role === "assistant" ? last.time.completed : undefined
 
-    return { session, color, label, state, tool, error, duration, tools, tokens: usage.tokens, cost: usage.cost }
+    return {
+      session,
+      color,
+      label,
+      state,
+      tool,
+      error,
+      duration,
+      tools,
+      tokens: usage.tokens,
+      cost: usage.cost,
+      start,
+      end,
+    }
   }
 
-  function agentUsage(messages: Message[]): { tokens: number; cost: number } {
+  function agentUsage(messages: readonly Message[]): { tokens: number; cost: number } {
     let tokens = 0
     let cost = 0
     for (const msg of messages) {
@@ -92,7 +110,7 @@ export function AgentWorkflow(props: { sessionID: string }) {
     return { tokens, cost }
   }
 
-  function deriveState(session: Session, messages: Message[]): AgentEntry["state"] {
+  function deriveState(session: Session, messages: readonly Message[]): AgentEntry["state"] {
     if (session.time.compacting) return "compacting"
     const last = messages.at(-1)
     if (!last) return "idle"
@@ -102,7 +120,7 @@ export function AgentWorkflow(props: { sessionID: string }) {
     return "idle"
   }
 
-  function activeTool(messages: Message[]): AgentEntry["tool"] {
+  function activeTool(messages: readonly Message[]): AgentEntry["tool"] {
     for (let i = messages.length - 1; i >= 0; i--) {
       const msg = messages[i]
       const parts = sync.data.part[msg.id] ?? []
@@ -111,23 +129,17 @@ export function AgentWorkflow(props: { sessionID: string }) {
         if (part.type !== "tool") continue
         const tp = part as ToolPart
         if (tp.state.status === "running") {
-          return {
-            name: tp.tool,
-            title: tp.state.title ?? "",
-          }
+          return { name: tp.tool, title: tp.state.title ?? "" }
         }
         if (tp.state.status === "pending") {
-          return {
-            name: tp.tool,
-            title: "",
-          }
+          return { name: tp.tool, title: "" }
         }
       }
     }
     return undefined
   }
 
-  function lastError(messages: Message[]): string | undefined {
+  function lastError(messages: readonly Message[]): string | undefined {
     const last = messages.findLast((x) => x.role === "assistant")
     if (!last) return undefined
     if (last.role !== "assistant" || !last.error) return undefined
@@ -135,7 +147,7 @@ export function AgentWorkflow(props: { sessionID: string }) {
     return (data?.message as string) ?? last.error.name
   }
 
-  function elapsed(messages: Message[]): number {
+  function elapsed(messages: readonly Message[]): number {
     const first = messages.find((x) => x.role === "user")
     if (!first) return 0
     const last = messages.findLast((x) => x.role === "assistant")
@@ -144,7 +156,7 @@ export function AgentWorkflow(props: { sessionID: string }) {
     return last.time.completed - first.time.created
   }
 
-  function countTools(messages: Message[]): number {
+  function countTools(messages: readonly Message[]): number {
     let count = 0
     for (const msg of messages) {
       const parts = sync.data.part[msg.id] ?? []
@@ -192,12 +204,61 @@ export function AgentWorkflow(props: { sessionID: string }) {
     }
   }
 
+  // Phase 5.1 — Build tree structure
+  const tree = createMemo((): AgentNode | undefined => {
+    const all = entries()
+    if (!all.length) return undefined
+    const root = all[0]
+    return {
+      id: root.session.id,
+      label: root.label,
+      color: root.color,
+      state: root.state,
+      tokens: root.tokens,
+      cost: root.cost,
+      children: all.slice(1).map((a) => ({
+        id: a.session.id,
+        label: a.label,
+        color: a.color,
+        state: a.state,
+        tokens: a.tokens,
+        cost: a.cost,
+        children: [],
+      })),
+    }
+  })
+
+  // Phase 5.2 — Build timeline
+  const timeline = createMemo(() => {
+    const all = entries()
+    if (all.length < 2) return []
+    return buildTimeline(
+      all.map((a) => ({ label: a.label, color: a.color, start: a.start, end: a.end })),
+      20,
+    )
+  })
+
+  // Phase 2.2 — Current phase for working agent
+  const phase = createMemo(() => {
+    const working = entries().find((a) => a.state === "working")
+    if (!working) return null
+    return derivePhase({ working: true, tool: working.tool ? { name: working.tool.name } : undefined })
+  })
+
   return (
     <Show when={entries().length > 0}>
       <box gap={0}>
         <text fg={theme.textMuted}>
           <b>Workflow</b>
         </text>
+
+        {/* Phase 2.2 — Phase indicator when agent is working */}
+        <Show when={phase()}>
+          <box paddingTop={1}>
+            <PhaseIndicator phase={phase()} theme={theme} />
+          </box>
+        </Show>
+
         <For each={entries()}>
           {(agent) => (
             <box paddingTop={1}>
@@ -260,6 +321,20 @@ export function AgentWorkflow(props: { sessionID: string }) {
             </box>
           )}
         </For>
+
+        {/* Phase 5.1 — Agent Tree (shown when there are subagents) */}
+        <Show when={tree() && entries().length > 1}>
+          <box paddingTop={1}>
+            <AgentTree root={tree()!} theme={theme} />
+          </box>
+        </Show>
+
+        {/* Phase 5.2 — Agent Timeline (shown when there are subagents) */}
+        <Show when={timeline().length > 0}>
+          <box paddingTop={1}>
+            <AgentTimeline entries={timeline()} theme={theme} />
+          </box>
+        </Show>
       </box>
     </Show>
   )
