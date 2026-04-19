@@ -31,6 +31,8 @@ type AgentEntry = {
   error?: string
   duration: number
   tools: number
+  tokens: number
+  cost: number
 }
 
 export function AgentWorkflow(props: { sessionID: string }) {
@@ -73,8 +75,21 @@ export function AgentWorkflow(props: { sessionID: string }) {
     const error = lastError(messages)
     const duration = elapsed(messages)
     const tools = countTools(messages)
+    const usage = agentUsage(messages)
 
-    return { session, color, label, state, tool, error, duration, tools }
+    return { session, color, label, state, tool, error, duration, tools, tokens: usage.tokens, cost: usage.cost }
+  }
+
+  function agentUsage(messages: Message[]): { tokens: number; cost: number } {
+    let tokens = 0
+    let cost = 0
+    for (const msg of messages) {
+      if (msg.role !== "assistant") continue
+      tokens +=
+        msg.tokens.input + msg.tokens.output + msg.tokens.reasoning + msg.tokens.cache.read + msg.tokens.cache.write
+      cost += msg.cost
+    }
+    return { tokens, cost }
   }
 
   function deriveState(session: Session, messages: Message[]): AgentEntry["state"] {
@@ -227,11 +242,19 @@ export function AgentWorkflow(props: { sessionID: string }) {
               <Show when={!agent.session.parentID}>
                 <text fg={theme.textMuted} paddingLeft={2}>
                   {agent.session.id.slice(0, 8)}
+                  <Show when={agent.tokens > 0}>
+                    {" "}
+                    · {agent.tokens.toLocaleString()} tok · ${agent.cost.toFixed(4)}
+                  </Show>
                 </text>
               </Show>
               <Show when={agent.session.parentID}>
                 <text fg={theme.textMuted} paddingLeft={2}>
                   ↳ {agent.session.id.slice(0, 8)}
+                  <Show when={agent.tokens > 0}>
+                    {" "}
+                    · {agent.tokens.toLocaleString()} tok · ${agent.cost.toFixed(4)}
+                  </Show>
                 </text>
               </Show>
             </box>
