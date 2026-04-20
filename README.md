@@ -1,4 +1,4 @@
-<p align="center">The open source AI IDE - opensource-ikebana.</p>
+# The open source AI IDE - IKEBANA
 
 This is a independent fork of OpenCode. 
 
