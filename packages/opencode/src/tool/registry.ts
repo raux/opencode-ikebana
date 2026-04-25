@@ -27,6 +27,7 @@ import { Log } from "@/util/log"
 import { LspTool } from "./lsp"
 import { Truncate } from "./truncate"
 import { ApplyPatchTool } from "./apply_patch"
+import { GitUndoTool } from "./git_undo"
 import { MarkitdownTool } from "./markitdown"
 import { CompressTool } from "./compress"
 import { Glob } from "../util/glob"
@@ -52,6 +53,7 @@ import { Bus } from "../bus"
 import { Agent } from "../agent/agent"
 import { Skill } from "../skill"
 import { Permission } from "@/permission"
+import { Snapshot } from "../snapshot"
 
 export namespace ToolRegistry {
   const log = Log.create({ service: "tool.registry" })
@@ -64,6 +66,7 @@ export namespace ToolRegistry {
     builtin: Tool.Def[]
     task: TaskDef
     read: ReadDef
+    git_undo: Tool.Def<any, any>
   }
 
   export interface Interface {
@@ -100,6 +103,7 @@ export namespace ToolRegistry {
     | Ripgrep.Service
     | Format.Service
     | Truncate.Service
+    | Snapshot.Service
   > = Layer.effect(
     Service,
     Effect.gen(function* () {
@@ -129,6 +133,7 @@ export namespace ToolRegistry {
       const skilltool = yield* SkillTool
       const markitdown = yield* MarkitdownTool
       const compresstool = yield* CompressTool
+      const gitundotool = yield* GitUndoTool
 
       const state = yield* InstanceState.make<State>(
         Effect.fn("ToolRegistry.state")(function* (ctx) {
@@ -206,6 +211,7 @@ export namespace ToolRegistry {
             patch: Tool.init(patchtool),
             markitdown: Tool.init(markitdown),
             compress: Tool.init(compresstool),
+            git_undo: Tool.init(gitundotool),
             question: Tool.init(question),
             lsp: Tool.init(lsptool),
             plan: Tool.init(plan),
@@ -232,11 +238,13 @@ export namespace ToolRegistry {
               tool.patch,
               tool.markitdown,
               tool.compress,
+              tool.git_undo,
               ...(Flag.OPENCODE_EXPERIMENTAL_LSP_TOOL ? [tool.lsp] : []),
               ...(Flag.OPENCODE_EXPERIMENTAL_PLAN_MODE && Flag.OPENCODE_CLIENT === "cli" ? [tool.plan] : []),
             ],
             task: tool.task,
             read: tool.read,
+            git_undo: tool.git_undo,
           }
         }),
       )
@@ -355,6 +363,7 @@ export namespace ToolRegistry {
       Layer.provide(CrossSpawnSpawner.defaultLayer),
       Layer.provide(Ripgrep.defaultLayer),
       Layer.provide(Truncate.defaultLayer),
+      Layer.provide(Snapshot.defaultLayer),
     ),
   )
 

@@ -1,0 +1,14 @@
+Provides git-based undo functionality for agent changes to the workspace. Allows creating snapshots of the current state and reverting to previous states.
+
+Actions:
+- snapshot: Create a checkpoint of the current workspace state
+- undo: Revert changes to match a previous snapshot (defaults to most recent if no ID specified)
+- list: Show information about available snapshots
+
+Usage examples:
+- To create a snapshot before making changes: { "action": "snapshot" }
+- To undo to the most recent snapshot: { "action": "undo" }
+- To undo to a specific snapshot: { "action": "undo", "snapshotId": "<hash>" }
+- To see snapshot information: { "action": "list" }
+
+The tool uses the internal snapshot system to track changes and can undo file modifications, additions, and deletions made by agents.

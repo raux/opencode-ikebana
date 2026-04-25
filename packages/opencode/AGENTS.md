@@ -9,6 +9,16 @@
 - **Output**: creates `migration/<timestamp>_<slug>/migration.sql` and `snapshot.json`.
 - **Tests**: migration tests should read the per-folder layout (no `_journal.json`).
 
+## Undo Changes
+
+Use the `git_undo` tool to create snapshots before making changes and revert if needed:
+
+- **Before making changes**: `{ "action": "snapshot" }` - Creates a checkpoint
+- **To undo**: `{ "action": "undo" }` - Reverts to the last snapshot
+- **To undo to specific snapshot**: `{ "action": "undo", "snapshotId": "<hash>" }`
+
+This allows agents to safely experiment with changes and easily rollback if something goes wrong.
+
 # opencode Effect rules
 
 Use these rules when writing or migrating Effect code.
