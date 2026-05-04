@@ -279,7 +279,7 @@ export namespace Config {
         `Configuration is invalid at ${item}`,
         ...parsed.error.issues.map((issue) => {
           const key = issue.path.join(".")
-          return `↳ ${issue.message}${key ? ` ${key}` : ""}`
+          return `↳ ${key ? `${key}: ` : ""}${issue.message}`
         }),
       ].join("\n")
       const { Session } = await import("@/session")
