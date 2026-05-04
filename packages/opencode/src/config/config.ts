@@ -243,6 +243,7 @@ export namespace Config {
 
   async function loadAgent(dir: string) {
     const result: Record<string, Agent> = {}
+    const { Session } = await import("@/session")
 
     for (const item of await Glob.scan("{agent,agents}/**/*.md", {
       cwd: dir,
@@ -254,7 +255,6 @@ export namespace Config {
         const message = ConfigMarkdown.FrontmatterError.isInstance(err)
           ? err.data.message
           : `Failed to parse agent ${item}`
-        const { Session } = await import("@/session")
         Bus.publish(Session.Event.Error, { error: new NamedError.Unknown({ message }).toObject() })
         log.error("failed to load agent", { agent: item, err })
         return undefined
@@ -275,7 +275,15 @@ export namespace Config {
         result[config.name] = parsed.data
         continue
       }
-      throw new InvalidError({ path: item, issues: parsed.error.issues }, { cause: parsed.error })
+      const message = [
+        `Invalid agent configuration in ${item}`,
+        ...parsed.error.issues.map((issue) => {
+          const field = issue.path.join(".")
+          return `↳ ${field ? `${field}: ` : ""}${issue.message}`
+        }),
+      ].join("\n")
+      Bus.publish(Session.Event.Error, { error: new NamedError.Unknown({ message }).toObject() })
+      log.error("failed to load agent", { agent: item, err: parsed.error })
     }
     return result
   }
