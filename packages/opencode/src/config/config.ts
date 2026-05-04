@@ -278,8 +278,8 @@ export namespace Config {
       const message = [
         `Configuration is invalid at ${item}`,
         ...parsed.error.issues.map((issue) => {
-          const key = issue.path.join(".")
-          return `↳ ${key ? `${key}: ` : ""}${issue.message}`
+          const field = issue.path.join(".")
+          return `↳ ${field ? `${field}: ` : ""}${issue.message}`
         }),
       ].join("\n")
       Bus.publish(Session.Event.Error, { error: new NamedError.Unknown({ message }).toObject() })
