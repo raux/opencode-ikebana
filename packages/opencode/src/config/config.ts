@@ -276,7 +276,7 @@ export namespace Config {
         continue
       }
       const message = [
-        `Configuration is invalid at ${item}`,
+        `Invalid agent configuration in ${item}`,
         ...parsed.error.issues.map((issue) => {
           const field = issue.path.join(".")
           return `↳ ${field ? `${field}: ` : ""}${issue.message}`
