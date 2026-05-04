@@ -628,6 +628,52 @@ Nested agent prompt`,
   })
 })
 
+test("skips invalid agents from markdown config", async () => {
+  await using tmp = await tmpdir({
+    init: async (dir) => {
+      const opencodeDir = path.join(dir, ".opencode")
+      await fs.mkdir(opencodeDir, { recursive: true })
+
+      const agentDir = path.join(opencodeDir, "agent")
+      await fs.mkdir(agentDir, { recursive: true })
+
+      await Filesystem.write(
+        path.join(agentDir, "valid.md"),
+        `---
+model: test/model
+mode: subagent
+---
+Valid agent prompt`,
+      )
+
+      await Filesystem.write(
+        path.join(agentDir, "invalid.md"),
+        `---
+model: test/model
+mode: architect
+---
+Invalid agent prompt`,
+      )
+    },
+  })
+
+  await Instance.provide({
+    directory: tmp.path,
+    fn: async () => {
+      const config = await Config.get()
+
+      expect(config.agent?.valid).toMatchObject({
+        name: "valid",
+        model: "test/model",
+        mode: "subagent",
+        prompt: "Valid agent prompt",
+      })
+
+      expect(config.agent?.invalid).toBeUndefined()
+    },
+  })
+})
+
 test("loads commands from .opencode/command (singular)", async () => {
   await using tmp = await tmpdir({
     init: async (dir) => {
