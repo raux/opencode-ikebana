@@ -275,12 +275,15 @@ export namespace Config {
         result[config.name] = parsed.data
         continue
       }
-      const msg = [
+      const message = [
         `Configuration is invalid at ${item}`,
-        ...parsed.error.issues.map((issue) => `↳ ${issue.message}${issue.path.length ? ` ${issue.path.join(".")}` : ""}`),
+        ...parsed.error.issues.map((issue) => {
+          const key = issue.path.join(".")
+          return `↳ ${issue.message}${key ? ` ${key}` : ""}`
+        }),
       ].join("\n")
       const { Session } = await import("@/session")
-      Bus.publish(Session.Event.Error, { error: new NamedError.Unknown({ message: msg }).toObject() })
+      Bus.publish(Session.Event.Error, { error: new NamedError.Unknown({ message }).toObject() })
       log.error("failed to load agent", { agent: item, err: parsed.error })
     }
     return result

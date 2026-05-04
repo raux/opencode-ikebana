@@ -630,15 +630,15 @@ Nested agent prompt`,
 
 test("skips invalid agents from markdown config", async () => {
   await using tmp = await tmpdir({
-    init: async (dir) => {
-      const opencodeDir = path.join(dir, ".opencode")
-      await fs.mkdir(opencodeDir, { recursive: true })
+    init: async (tmp) => {
+      const root = path.join(tmp, ".opencode")
+      await fs.mkdir(root, { recursive: true })
 
-      const agentDir = path.join(opencodeDir, "agent")
-      await fs.mkdir(agentDir, { recursive: true })
+      const dir = path.join(root, "agent")
+      await fs.mkdir(dir, { recursive: true })
 
       await Filesystem.write(
-        path.join(agentDir, "valid.md"),
+        path.join(dir, "valid.md"),
         `---
 model: test/model
 mode: subagent
@@ -647,7 +647,7 @@ Valid agent prompt`,
       )
 
       await Filesystem.write(
-        path.join(agentDir, "invalid.md"),
+        path.join(dir, "invalid.md"),
         `---
 model: test/model
 mode: architect
